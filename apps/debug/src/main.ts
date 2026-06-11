@@ -5,7 +5,7 @@ import {
   renderSpecularToCanvas,
   type LiquidLens,
   type LiquidLensOptions,
-} from "@glasskit/core";
+} from "caustics";
 import { Spring } from "./spring";
 
 // ---------------------------------------------------------------------------
@@ -298,7 +298,7 @@ for (const id of ids) {
 
 // ---------------------------------------------------------------------------
 // Init: size the frame before creating the lens so the first generated map
-// is correct, then hand the visual layers over to @glasskit/core.
+// is correct, then hand the visual layers over to caustics.
 
 refreshLabels();
 lensEl.style.width = `${geomW.value}px`;

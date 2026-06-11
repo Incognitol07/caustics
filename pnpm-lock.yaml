@@ -10,7 +10,7 @@ importers:
 
   apps/debug:
     dependencies:
-      '@glasskit/core':
+      caustics:
         specifier: workspace:*
         version: link:../../packages/core
     devDependencies:
@@ -35,7 +35,7 @@ importers:
 
   packages/react:
     dependencies:
-      '@glasskit/core':
+      caustics:
         specifier: workspace:*
         version: link:../core
     devDependencies:

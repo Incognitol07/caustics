@@ -1,12 +1,14 @@
-# glasskit
+# caustics
 
 A liquid glass lens for the web, built on SVG displacement maps. One promise: the same effect renders in Chromium, Safari, and Firefox, because it never touches `backdrop-filter`.
+
+The name is the optics term: caustics are the patterns light forms after bending through water or glass — which is exactly what this library computes.
 
 > Status: early development. Not yet published to npm.
 
 ## How it works
 
-CSS cannot bend the pixels behind an element, so glasskit takes the approach Aave described in their Liquid Glass write-up:
+CSS cannot bend the pixels behind an element, so caustics takes the approach Aave described in their Liquid Glass write-up:
 
 1. Generate a displacement map on a canvas. The map is derived from a signed distance field of the lens shape, so displacement is strongest at the rim and zero in the center. Red encodes horizontal shift, green encodes vertical shift, 128 means no shift.
 2. Feed that map into an SVG `feDisplacementMap` filter, applied with plain `filter` (not `backdrop-filter`, which Safari and Firefox handle inconsistently for SVG filters).
@@ -21,7 +23,7 @@ The map is only regenerated when the lens shape changes. Moving the lens is a tr
 There is no npm package yet. Inside this repo, depend on the workspace package:
 
 ```json
-{ "dependencies": { "@glasskit/core": "workspace:*" } }
+{ "dependencies": { "caustics": "workspace:*" } }
 ```
 
 ### `createLiquidLens(frame, backdrop, options?)`
@@ -29,7 +31,7 @@ There is no npm package yet. Inside this repo, depend on the workspace package:
 The high-level API. Give it a positioned element (the lens) and the element behind it (the backdrop). It clones the backdrop into the lens, keeps the clone aligned, and manages the filter and shine layers.
 
 ```ts
-import { createLiquidLens } from "@glasskit/core";
+import { createLiquidLens } from "caustics";
 
 const lens = createLiquidLens(
   document.getElementById("lens")!,
@@ -70,7 +72,7 @@ Options (all optional):
 The low-level primitive, for when you want to manage the DOM yourself. It builds the SVG filter, injects it into the document, and returns a handle:
 
 ```ts
-import { createGlassFilter } from "@glasskit/core";
+import { createGlassFilter } from "caustics";
 
 const glass = createGlassFilter();
 
@@ -107,7 +109,7 @@ The underlying functions are exported for direct use: `roundedRectSDF`, `compute
 pnpm install
 pnpm build        # build all packages
 pnpm test         # run unit tests
-pnpm --filter @glasskit/debug dev   # interactive playground at localhost:5173
+pnpm --filter @caustics/debug dev   # interactive playground at localhost:5173
 ```
 
 The repo is a pnpm workspace: `packages/core` is the zero-dependency library, `apps/debug` is a playground with sliders for every parameter and a live view of the generated displacement map.

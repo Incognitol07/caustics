@@ -2,7 +2,7 @@ import {
   createLiquidLens,
   type LiquidLens as LiquidLensHandle,
   type LiquidLensOptions,
-} from "@glasskit/core";
+} from "caustics";
 import {
   useEffect,
   useRef,

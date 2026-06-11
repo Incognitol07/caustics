@@ -5,12 +5,12 @@ export default defineConfig({
   build: {
     lib: {
       entry: resolve(__dirname, "src/index.tsx"),
-      name: "GlasskitReact",
+      name: "CausticsReact",
       fileName: (format) => (format === "es" ? "index.js" : "index.cjs"),
       formats: ["es", "cjs"],
     },
     rollupOptions: {
-      external: ["react", "react/jsx-runtime", "react/jsx-dev-runtime", "@glasskit/core"],
+      external: ["react", "react/jsx-runtime", "react/jsx-dev-runtime", "caustics"],
     },
     sourcemap: true,
     minify: false,

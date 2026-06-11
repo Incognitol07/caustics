@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>glasskit</title>
+    <title>caustics</title>
     <style>
       :root {
         color-scheme: dark;
@@ -11,7 +11,7 @@
         --backdrop-image:
           repeating-linear-gradient(45deg, #ff5f6d 0 20px, #ffc371 20px 40px),
           repeating-linear-gradient(-45deg, transparent 0 10px, rgba(0, 0, 0, 0.15) 10px 20px);
-        --backdrop-text: "glasskit";
+        --backdrop-text: "caustics";
       }
 
       body {
@@ -103,7 +103,7 @@
       }
 
       /* The lens frame. Everything inside it (refraction copy, shine) is
-         injected and managed by createLiquidLens from @glasskit/core. */
+         injected and managed by createLiquidLens from caustics. */
       .lens {
         position: absolute;
         top: 0;
@@ -193,7 +193,7 @@
       </div>
       <div class="control">
         <label for="backdrop-text"><span>text</span></label>
-        <input id="backdrop-text" type="text" value="glasskit" />
+        <input id="backdrop-text" type="text" value="caustics" />
       </div>
     </div>
 

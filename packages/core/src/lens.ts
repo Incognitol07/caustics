@@ -1,6 +1,6 @@
 import { createGlassFilter } from "./filter";
 
-const LENS_MARKER = "data-glasskit-lens";
+const LENS_MARKER = "data-caustics-lens";
 
 export interface LiquidLensOptions {
   /** Maximum displacement at the rim, in px (default 24) */

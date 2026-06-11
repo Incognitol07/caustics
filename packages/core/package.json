@@ -1,7 +1,7 @@
 {
-  "name": "@glasskit/core",
+  "name": "caustics",
   "version": "0.0.1",
-  "description": "Cross-browser liquid glass refraction primitives (SVG displacement maps + WebGL renderer)",
+  "description": "Cross-browser liquid glass refraction for the web, built on SVG displacement maps",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

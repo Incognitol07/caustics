@@ -13,7 +13,8 @@ const CHANNEL_MATRICES = {
   blue: "0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0",
 } as const;
 
-export interface GlassFilterOptions extends LensParams {
+/** The optical (non-geometry) knobs of the glass effect. */
+export interface GlassEffectOptions {
   /** 0..1 — relative extra displacement of red vs blue (chromatic aberration) */
   aberration: number;
   /** Gaussian blur stdDeviation in px applied to the refracted content */
@@ -26,6 +27,8 @@ export interface GlassFilterOptions extends LensParams {
   specular: number;
 }
 
+export interface GlassFilterOptions extends LensParams, GlassEffectOptions {}
+
 export interface GlassFilter {
   /**
    * Value for the CSS `filter` property, e.g. `url(#glasskit-1-0)`.
@@ -34,8 +37,12 @@ export interface GlassFilter {
    * to the primitives of an already-referenced filter.
    */
   readonly cssFilter: string;
-  /** Regenerates the displacement map and re-tunes the filter primitives. */
-  update(options: GlassFilterOptions): void;
+  /**
+   * Regenerates the displacement and specular maps and re-tunes the filter.
+   * `resolution` (samples per CSS px) overrides the devicePixelRatio
+   * default — pass ~0.5 when updating every frame of a shape animation.
+   */
+  update(options: GlassFilterOptions, resolution?: number): void;
   /**
    * Multiplies the displacement magnitude on top of the last `update`
    * without regenerating the map. Cheap enough to call every animation
@@ -48,25 +55,21 @@ export interface GlassFilter {
 
 let nextFilterId = 1;
 
-/**
- * Builds the liquid-glass SVG filter and injects it into the document.
- *
- * Pipeline: the element's content is displaced through a generated map once
- * per color channel — red and blue slightly more/less than green, fringing
- * the rim like real dispersion — then the channels are recombined, softened
- * with a slight blur, and saturated. Apply the returned `cssFilter` to the
- * element whose pixels should bend (typically a copy of the page backdrop;
- * the filter cannot sample what is behind the element).
- *
- * The filter region keeps SVG's default 10% margin so rim pixels can sample
- * content just outside the element's bounds.
- */
-export function createGlassFilter(doc: Document = document): GlassFilter {
+/** Hidden `<svg><filter>` host plus the WebKit id-cycling machinery. */
+interface FilterShell {
+  svg: SVGSVGElement;
+  filter: SVGElement;
+  readonly id: string;
+  /** Assigns a fresh id; call at the start of every map update. */
+  cycle(): void;
+}
+
+function createFilterShell(doc: Document): FilterShell {
   const idBase = `glasskit-${nextFilterId++}`;
   let generation = 0;
-  let id = `${idBase}-${generation}`;
+  let id = `${idBase}-0`;
 
-  const svg = doc.createElementNS(SVG_NS, "svg");
+  const svg = doc.createElementNS(SVG_NS, "svg") as SVGSVGElement;
   svg.setAttribute("width", "0");
   svg.setAttribute("height", "0");
   svg.setAttribute("aria-hidden", "true");
@@ -77,6 +80,36 @@ export function createGlassFilter(doc: Document = document): GlassFilter {
   filter.setAttribute("color-interpolation-filters", "sRGB");
   svg.appendChild(filter);
 
+  return {
+    svg,
+    filter,
+    get id() {
+      return id;
+    },
+    cycle() {
+      generation += 1;
+      id = `${idBase}-${generation}`;
+      filter.setAttribute("id", id);
+    },
+  };
+}
+
+interface PipelineHandles {
+  mapImage: SVGElement;
+  specularImage: SVGElement;
+  displaceRed: SVGElement;
+  displaceGreen: SVGElement;
+  displaceBlue: SVGElement;
+  blur: SVGElement;
+  saturate: SVGElement;
+}
+
+/**
+ * Builds the refraction pipeline into `filter`: per-channel displacement
+ * (chromatic aberration) -> recombine -> blur -> saturate -> screen-blend
+ * the specular rim light.
+ */
+function buildPipeline(doc: Document, filter: SVGElement): PipelineHandles {
   const fe = (name: string, attrs: Record<string, string>): SVGElement => {
     const el = doc.createElementNS(SVG_NS, name);
     for (const [key, value] of Object.entries(attrs)) {
@@ -86,19 +119,11 @@ export function createGlassFilter(doc: Document = document): GlassFilter {
     return el;
   };
 
-  const mapImage = fe("feImage", {
-    x: "0",
-    y: "0",
-    preserveAspectRatio: "none",
-    result: "map",
-  });
+  const image = (result: string): SVGElement =>
+    fe("feImage", { x: "0", y: "0", preserveAspectRatio: "none", result });
 
-  const specularImage = fe("feImage", {
-    x: "0",
-    y: "0",
-    preserveAspectRatio: "none",
-    result: "specular",
-  });
+  const mapImage = image("map");
+  const specularImage = image("specular");
 
   const displaceChannel = (channel: keyof typeof CHANNEL_MATRICES): SVGElement => {
     const displaced = fe("feDisplacementMap", {
@@ -158,7 +183,46 @@ export function createGlassFilter(doc: Document = document): GlassFilter {
   // highlight instead of hazing like an overlay.
   fe("feBlend", { in: "glass", in2: "specular", mode: "screen" });
 
-  doc.body.appendChild(svg);
+  return {
+    mapImage,
+    specularImage,
+    displaceRed,
+    displaceGreen,
+    displaceBlue,
+    blur,
+    saturate,
+  };
+}
+
+/** Points an feImage at a canvas's current content, stretched to width x height px. */
+function applyImage(
+  image: SVGElement,
+  canvas: HTMLCanvasElement,
+  width: number,
+  height: number,
+): void {
+  // Both href forms are needed: Safari/Firefox honor xlink:href,
+  // Chromium honors href.
+  const url = canvas.toDataURL("image/png");
+  image.setAttribute("href", url);
+  image.setAttributeNS(XLINK_NS, "href", url);
+  image.setAttribute("width", String(width));
+  image.setAttribute("height", String(height));
+}
+
+/**
+ * Builds the liquid-glass SVG filter for a single lens and injects it into
+ * the document. Apply the returned `cssFilter` to the element whose pixels
+ * should bend (typically a copy of the page backdrop; the filter cannot
+ * sample what is behind the element).
+ *
+ * The filter region keeps SVG's default 10% margin so rim pixels can sample
+ * content just outside the element's bounds.
+ */
+export function createGlassFilter(doc: Document = document): GlassFilter {
+  const shell = createFilterShell(doc);
+  const pipeline = buildPipeline(doc, shell.filter);
+  doc.body.appendChild(shell.svg);
 
   const mapCanvas = doc.createElement("canvas");
   const specularCanvas = doc.createElement("canvas");
@@ -171,32 +235,33 @@ export function createGlassFilter(doc: Document = document): GlassFilter {
 
   const applyScales = (): void => {
     const scale = baseScale * intensity;
-    displaceRed.setAttribute("scale", String(scale * (1 + aberration)));
-    displaceGreen.setAttribute("scale", String(scale));
-    displaceBlue.setAttribute("scale", String(scale * (1 - aberration)));
+    pipeline.displaceRed.setAttribute("scale", String(scale * (1 + aberration)));
+    pipeline.displaceGreen.setAttribute("scale", String(scale));
+    pipeline.displaceBlue.setAttribute("scale", String(scale * (1 - aberration)));
   };
 
   return {
     get cssFilter() {
-      return `url(#${id})`;
+      return `url(#${shell.id})`;
     },
 
-    update(options: GlassFilterOptions): void {
+    update(options: GlassFilterOptions, resolutionOverride?: number): void {
       // Cycle the filter id so WebKit notices the change; it does not
       // reliably repaint when an already-referenced filter's primitives
       // are mutated in place.
-      generation += 1;
-      id = `${idBase}-${generation}`;
-      filter.setAttribute("id", id);
+      shell.cycle();
 
       // Encode the field so `depth` px spans the full channel range, giving
       // the 8-bit map maximum precision. Generate at device resolution
       // (capped to bound canvas cost) so the map stays sharp on high-DPI
       // displays; feImage scales it back down to CSS pixels.
       const depth = Math.max(options.depth, 1);
-      const resolution = Math.min(doc.defaultView?.devicePixelRatio ?? 1, 2);
+      const resolution =
+        resolutionOverride ?? Math.min(doc.defaultView?.devicePixelRatio ?? 1, 2);
+
       const field = computeDisplacementField(options, resolution);
       renderDisplacementMapToCanvas(mapCanvas, field, { scale: depth });
+      applyImage(pipeline.mapImage, mapCanvas, options.width, options.height);
 
       renderSpecularToCanvas(
         specularCanvas,
@@ -204,20 +269,7 @@ export function createGlassFilter(doc: Document = document): GlassFilter {
         { lightAngle: options.lightAngle, strength: options.specular },
         resolution,
       );
-
-      // Both href forms are needed: Safari/Firefox honor xlink:href,
-      // Chromium honors href.
-      const mapDataUrl = mapCanvas.toDataURL("image/png");
-      mapImage.setAttribute("href", mapDataUrl);
-      mapImage.setAttributeNS(XLINK_NS, "href", mapDataUrl);
-      mapImage.setAttribute("width", String(options.width));
-      mapImage.setAttribute("height", String(options.height));
-
-      const specularDataUrl = specularCanvas.toDataURL("image/png");
-      specularImage.setAttribute("href", specularDataUrl);
-      specularImage.setAttributeNS(XLINK_NS, "href", specularDataUrl);
-      specularImage.setAttribute("width", String(options.width));
-      specularImage.setAttribute("height", String(options.height));
+      applyImage(pipeline.specularImage, specularCanvas, options.width, options.height);
 
       // feDisplacementMap shifts by scale * (channel - 0.5), so scale =
       // 2 * depth recovers the encoded pixel displacement.
@@ -225,8 +277,8 @@ export function createGlassFilter(doc: Document = document): GlassFilter {
       aberration = options.aberration;
       applyScales();
 
-      blur.setAttribute("stdDeviation", String(options.blur));
-      saturate.setAttribute("values", String(options.saturation));
+      pipeline.blur.setAttribute("stdDeviation", String(options.blur));
+      pipeline.saturate.setAttribute("values", String(options.saturation));
     },
 
     setIntensity(factor: number): void {
@@ -235,7 +287,7 @@ export function createGlassFilter(doc: Document = document): GlassFilter {
     },
 
     destroy(): void {
-      svg.remove();
+      shell.svg.remove();
     },
   };
 }

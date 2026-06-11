@@ -19,6 +19,18 @@ export interface SpecularOptions {
 }
 
 /**
+ * Highlight alpha for one rim sample: `facing` is the dot product of the
+ * outward surface normal with the light direction, `mask` the rim band
+ * weight. Shared by the single-lens and scene renderers so the two looks
+ * never drift apart.
+ */
+export function specularIntensity(facing: number, mask: number, strength: number): number {
+  const main = Math.max(facing, 0) ** SPECULAR_EXPONENT;
+  const counter = Math.max(-facing, 0) ** SPECULAR_EXPONENT * COUNTER_LIGHT;
+  return clamp(mask * strength * (AMBIENT_RING + main + counter), 0, 1);
+}
+
+/**
  * Renders the specular rim light for a lens onto a canvas: white pixels
  * whose alpha encodes highlight intensity, meant to be screen-blended over
  * the refracted output.
@@ -94,10 +106,7 @@ export function renderSpecularToCanvas(
       const normalY = gy / gLen;
 
       const facing = normalX * lightX + normalY * lightY;
-      const main = Math.max(facing, 0) ** SPECULAR_EXPONENT;
-      const counter = Math.max(-facing, 0) ** SPECULAR_EXPONENT * COUNTER_LIGHT;
-
-      const alpha = clamp(mask * strength * (AMBIENT_RING + main + counter), 0, 1);
+      const alpha = specularIntensity(facing, mask, strength);
       const i = (py * outWidth + px) * 4;
       data[i] = 255;
       data[i + 1] = 255;

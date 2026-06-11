@@ -26,6 +26,8 @@ const ids = [
 ] as const;
 type ControlId = (typeof ids)[number];
 
+const GEOMETRY_IDS: readonly ControlId[] = ["width", "height", "borderRadius"];
+
 const inputs = Object.fromEntries(
   ids.map((id) => [id, document.getElementById(id) as HTMLInputElement]),
 ) as Record<ControlId, HTMLInputElement>;
@@ -38,18 +40,10 @@ function num(id: ControlId): number {
   return Number(inputs[id].value);
 }
 
-function readOptions(): Required<LiquidLensOptions> {
-  return {
-    borderRadius: num("borderRadius"),
-    depth: num("depth"),
-    curvature: num("curvature"),
-    splay: num("splay"),
-    aberration: num("aberration"),
-    blur: num("blur"),
-    saturation: num("saturation"),
-    lightAngle: num("lightAngle"),
-    specular: num("specular"),
-  };
+function refreshLabels(): void {
+  for (const id of ids) {
+    valueLabels[id].textContent = inputs[id].value;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -69,27 +63,47 @@ function clamp(value: number, min: number, max: number): number {
 // ---------------------------------------------------------------------------
 // Liquid motion
 //
-// The lens never follows the pointer directly. Its position runs through
-// underdamped springs, so it lags behind the finger, overshoots, and wobbles
-// to a stop. Velocity stretches it along the direction of travel, and
-// pressing swells the refraction while squishing the frame. All of this is
-// per-frame transform and attribute work; the displacement map itself is
-// never regenerated during motion.
+// Position, press, and geometry all run through springs. Moving the lens is
+// transform-only (no map work), but a geometry morph is a real shape change,
+// so the displacement and specular maps regenerate every frame at reduced
+// resolution while the size springs are in motion, with one crisp full-
+// resolution pass once everything settles.
 
 const target = { x: 0, y: 0 }; // drag offset from center, set by the pointer
 const springX = new Spring(0, 320, 17);
 const springY = new Spring(0, 320, 17);
 const press = new Spring(0, 550, 20);
 
+const geomW = new Spring(num("width"), 170, 16);
+const geomH = new Spring(num("height"), 170, 16);
+const geomR = new Spring(num("borderRadius"), 170, 16);
+
 let dragging = false;
 let rafId: number | undefined;
 let lastTime = 0;
+let needsFinalPass = false;
+const appliedGeom = { w: geomW.value, h: geomH.value, r: geomR.value };
 
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
+/** Lens options at this instant; borderRadius follows the animated spring. */
+function currentOptions(): Required<LiquidLensOptions> {
+  return {
+    borderRadius: geomR.value,
+    depth: num("depth"),
+    curvature: num("curvature"),
+    splay: num("splay"),
+    aberration: num("aberration"),
+    blur: num("blur"),
+    saturation: num("saturation"),
+    lightAngle: num("lightAngle"),
+    specular: num("specular"),
+  };
+}
+
 function applyTransform(): void {
-  const left = (background.clientWidth - num("width")) / 2 + springX.value;
-  const top = (background.clientHeight - num("height")) / 2 + springY.value;
+  const left = (background.clientWidth - geomW.value) / 2 + springX.value;
+  const top = (background.clientHeight - geomH.value) / 2 + springY.value;
 
   // Squash-and-stretch along the direction of travel.
   const speed = Math.hypot(springX.velocity, springY.velocity);
@@ -113,25 +127,48 @@ function tick(now: number): void {
 
   springX.target = target.x;
   springY.target = target.y;
+  geomW.target = num("width");
+  geomH.target = num("height");
+  geomR.target = num("borderRadius");
 
+  const springs = [springX, springY, press, geomW, geomH, geomR];
   if (reducedMotion.matches) {
-    // No wobble, stretch, or swell for users who asked for less motion;
-    // the lens just follows the pointer directly.
-    springX.snap();
-    springY.snap();
-    press.snap();
+    // No wobble, stretch, swell, or morph tween for users who asked for
+    // less motion; everything jumps straight to its target.
+    for (const spring of springs) spring.snap();
   } else {
-    springX.step(dt);
-    springY.step(dt);
-    press.step(dt);
+    for (const spring of springs) spring.step(dt);
+  }
+
+  // Geometry morph: resize the frame and regenerate the maps cheaply.
+  const geometryChanged =
+    Math.abs(geomW.value - appliedGeom.w) > 0.1 ||
+    Math.abs(geomH.value - appliedGeom.h) > 0.1 ||
+    Math.abs(geomR.value - appliedGeom.r) > 0.1;
+
+  if (geometryChanged) {
+    appliedGeom.w = geomW.value;
+    appliedGeom.h = geomH.value;
+    appliedGeom.r = geomR.value;
+    lensEl.style.width = `${geomW.value}px`;
+    lensEl.style.height = `${geomH.value}px`;
+    lensEl.style.borderRadius = `${geomR.value}px`;
+    lens?.update(currentOptions(), 0.5);
+    needsFinalPass = true;
   }
 
   applyTransform();
   lens?.setIntensity(1 + 0.9 * press.value);
 
-  if (dragging || !springX.settled || !springY.settled || !press.settled) {
+  if (dragging || springs.some((s) => !s.settled)) {
     rafId = requestAnimationFrame(tick);
   } else {
+    if (needsFinalPass) {
+      // One crisp full-resolution pass now that the morph has settled.
+      needsFinalPass = false;
+      lens?.update(currentOptions());
+      refreshPreviews();
+    }
     rafId = undefined;
   }
 }
@@ -145,48 +182,30 @@ function wake(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Slider updates
+// Map previews
 
-function update(): void {
-  for (const id of ids) {
-    valueLabels[id].textContent = inputs[id].value;
-  }
-
-  lensEl.style.width = `${num("width")}px`;
-  lensEl.style.height = `${num("height")}px`;
-  lensEl.style.borderRadius = `${num("borderRadius")}px`;
-  applyTransform();
-
-  const options = readOptions();
-  lens?.update(options);
-
-  // Standalone preview of the generated displacement map.
-  const field = computeDisplacementField({
-    width: num("width"),
-    height: num("height"),
+function refreshPreviews(): void {
+  const options = currentOptions();
+  const shape = {
+    width: Math.round(geomW.value),
+    height: Math.round(geomH.value),
     borderRadius: options.borderRadius,
     depth: options.depth,
     curvature: options.curvature,
     splay: options.splay,
-  });
+  };
+
+  const field = computeDisplacementField(shape);
   renderDisplacementMapToCanvas(mapCanvas, field, { scale: Math.max(options.depth, 1) });
   mapCanvas.style.width = `${field.width}px`;
   mapCanvas.style.height = `${field.height}px`;
 
-  renderSpecularToCanvas(
-    specularCanvas,
-    {
-      width: num("width"),
-      height: num("height"),
-      borderRadius: options.borderRadius,
-      depth: options.depth,
-      curvature: options.curvature,
-      splay: options.splay,
-    },
-    { lightAngle: options.lightAngle, strength: options.specular },
-  );
-  specularCanvas.style.width = `${num("width")}px`;
-  specularCanvas.style.height = `${num("height")}px`;
+  renderSpecularToCanvas(specularCanvas, shape, {
+    lightAngle: options.lightAngle,
+    strength: options.specular,
+  });
+  specularCanvas.style.width = `${shape.width}px`;
+  specularCanvas.style.height = `${shape.height}px`;
 }
 
 // ---------------------------------------------------------------------------
@@ -204,8 +223,8 @@ lensEl.addEventListener("pointerdown", (event) => {
   const grabY = event.clientY - target.y;
 
   const onMove = (moveEvent: PointerEvent) => {
-    const maxX = (background.clientWidth - num("width")) / 2;
-    const maxY = (background.clientHeight - num("height")) / 2;
+    const maxX = (background.clientWidth - geomW.value) / 2;
+    const maxY = (background.clientHeight - geomH.value) / 2;
     target.x = clamp(moveEvent.clientX - grabX, -maxX, maxX);
     target.y = clamp(moveEvent.clientY - grabY, -maxY, maxY);
   };
@@ -262,12 +281,29 @@ backdropTextInput.addEventListener("input", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Slider wiring: geometry sliders animate through the springs; everything
+// else applies immediately.
 
 for (const id of ids) {
-  inputs[id].addEventListener("input", update);
+  inputs[id].addEventListener("input", () => {
+    refreshLabels();
+    if (GEOMETRY_IDS.includes(id)) {
+      wake();
+    } else {
+      lens?.update(currentOptions());
+      refreshPreviews();
+    }
+  });
 }
 
-// Size the frame before creating the lens so the first generated map is
-// correct, then hand the visual layers over to @glasskit/core.
-update();
-lens = createLiquidLens(lensEl, background, readOptions());
+// ---------------------------------------------------------------------------
+// Init: size the frame before creating the lens so the first generated map
+// is correct, then hand the visual layers over to @glasskit/core.
+
+refreshLabels();
+lensEl.style.width = `${geomW.value}px`;
+lensEl.style.height = `${geomH.value}px`;
+lensEl.style.borderRadius = `${geomR.value}px`;
+applyTransform();
+lens = createLiquidLens(lensEl, background, currentOptions());
+refreshPreviews();

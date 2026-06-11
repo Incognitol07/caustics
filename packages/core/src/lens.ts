@@ -24,8 +24,12 @@ export interface LiquidLensOptions {
 }
 
 export interface LiquidLens {
-  /** Merges in new options and regenerates the displacement map. */
-  update(options?: LiquidLensOptions): void;
+  /**
+   * Merges in new options and regenerates the displacement map.
+   * `resolution` (samples per CSS px) overrides the devicePixelRatio
+   * default — pass ~0.5 when updating every frame of a size morph.
+   */
+  update(options?: LiquidLensOptions, resolution?: number): void;
   /**
    * Re-aligns the backdrop copy with the real backdrop. Call after moving
    * the frame (e.g. on every drag frame). Cheap, no map regeneration.
@@ -121,26 +125,37 @@ export function createLiquidLens(
     clone.style.transform = `translate(${-dx}px, ${-dy}px)`;
   }
 
-  function update(next: LiquidLensOptions = {}): void {
+  // Size of the frame at the last update, so the ResizeObserver can skip
+  // sizes that an explicit update (e.g. a per-frame morph) already handled.
+  let lastWidth = -1;
+  let lastHeight = -1;
+
+  function update(next: LiquidLensOptions = {}, resolution?: number): void {
     settings = { ...settings, ...next };
 
     const borderRadius =
       settings.borderRadius ??
       (Number.parseFloat(getComputedStyle(frame).borderTopLeftRadius) || 0);
 
-    glassFilter.update({
-      width: frame.clientWidth,
-      height: frame.clientHeight,
-      borderRadius,
-      depth: settings.depth,
-      curvature: settings.curvature,
-      splay: settings.splay,
-      aberration: settings.aberration,
-      blur: settings.blur,
-      saturation: settings.saturation,
-      lightAngle: settings.lightAngle,
-      specular: settings.specular,
-    });
+    lastWidth = frame.clientWidth;
+    lastHeight = frame.clientHeight;
+
+    glassFilter.update(
+      {
+        width: lastWidth,
+        height: lastHeight,
+        borderRadius,
+        depth: settings.depth,
+        curvature: settings.curvature,
+        splay: settings.splay,
+        aberration: settings.aberration,
+        blur: settings.blur,
+        saturation: settings.saturation,
+        lightAngle: settings.lightAngle,
+        specular: settings.specular,
+      },
+      resolution,
+    );
     // The filter id cycles on update (WebKit repaint workaround), so the
     // reference must be re-applied.
     refraction.style.filter = glassFilter.cssFilter;
@@ -150,10 +165,15 @@ export function createLiquidLens(
     sync();
   }
 
-  // Map geometry depends on the frame's size; regenerate when it changes.
+  // Map geometry depends on the frame's size; regenerate when it changes,
+  // unless an explicit update already covered the current size.
   let resizeObserver: ResizeObserver | undefined;
   if (typeof ResizeObserver !== "undefined") {
-    resizeObserver = new ResizeObserver(() => update());
+    resizeObserver = new ResizeObserver(() => {
+      if (frame.clientWidth !== lastWidth || frame.clientHeight !== lastHeight) {
+        update();
+      }
+    });
     resizeObserver.observe(frame);
   }
 

@@ -7,9 +7,9 @@ export interface LensParams {
   borderRadius: number;
   /** Maximum displacement magnitude in pixels */
   depth: number;
-  /** 0..1 — width of the curved rim as a fraction of the lens's shorter half-extent */
+  /** 0..1:width of the curved rim as a fraction of the lens's shorter half-extent */
   curvature: number;
-  /** 0..1 — blends displacement direction from edge-normal (0) to radial-from-center (1) */
+  /** 0..1:blends displacement direction from edge-normal (0) to radial-from-center (1) */
   splay: number;
 }
 

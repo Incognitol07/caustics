@@ -1,59 +1,50 @@
+<!-- hero demo goes here-->
+
 # caustics
 
-A liquid glass lens for the web, built on SVG displacement maps. One promise: the same effect renders in Chromium, Safari, and Firefox, because it never touches `backdrop-filter`.
+Liquid glass for the web: real refraction from displacement maps, not a blur and a white border. Caustics are the patterns light forms after bending through water or glass, which is what this library computes.
 
-The name is the optics term: caustics are the patterns light forms after bending through water or glass — which is exactly what this library computes.
+## Works in your browser
 
-> Status: early development. Not yet published to npm.
+| Chromium | Safari | Firefox |
+| --- | --- | --- |
+| yes | yes | yes |
 
-## How it works
+One rendering path everywhere: SVG filters applied with plain CSS `filter`, which all three engines agree on. The common alternative, `backdrop-filter` with filter functions, silently degrades to a flat blur outside Chromium. That difference is the reason this library exists.
 
-CSS cannot bend the pixels behind an element, so caustics takes the approach Aave described in their Liquid Glass write-up:
+<!-- side-by-side image goes here: a backdrop-filter library in Safari vs caustics in Safari -->
 
-1. Generate a displacement map on a canvas. The map is derived from a signed distance field of the lens shape, so displacement is strongest at the rim and zero in the center. Red encodes horizontal shift, green encodes vertical shift, 128 means no shift.
-2. Feed that map into an SVG `feDisplacementMap` filter, applied with plain `filter` (not `backdrop-filter`, which Safari and Firefox handle inconsistently for SVG filters).
-3. Since the filter can only bend the element's own content, place a pixel-aligned copy of the backdrop inside the lens and bend that.
+## Use
 
-On top of the refraction, the filter displaces the red, green, and blue channels by slightly different amounts (chromatic aberration), then applies a small blur and a saturation boost. A specular rim light is computed from the same distance field (surface normals against a configurable light direction) and screen-blended over the result, so the glossy edge follows the lens shape exactly.
-
-The map is only regenerated when the lens shape changes. Moving the lens is a transform update, so dragging stays cheap.
-
-## Usage
-
-There is no npm package yet. Inside this repo, depend on the workspace package:
-
-```json
-{ "dependencies": { "caustics": "workspace:*" } }
+```sh
+npm install caustics
 ```
 
-### `createLiquidLens(frame, backdrop, options?)`
-
-The high-level API. Give it a positioned element (the lens) and the element behind it (the backdrop). It clones the backdrop into the lens, keeps the clone aligned, and manages the filter and shine layers.
+> Not on npm yet. Until the first release, clone this repo and `pnpm build`.
 
 ```ts
 import { createLiquidLens } from "caustics";
 
+// A glass dock floating over the page hero. The lens clones the hero's
+// content and bends it, so it works in any browser that can draw SVG.
 const lens = createLiquidLens(
-  document.getElementById("lens")!,
-  document.getElementById("background")!,
-  { depth: 24, curvature: 0.4 },
+  document.querySelector<HTMLElement>(".dock")!,
+  document.querySelector<HTMLElement>(".hero")!,
 );
 
-// After moving the lens (e.g. on every drag frame). Cheap.
-lens.sync();
-
-// Refraction strength multiplier, also cheap enough for every frame.
-// Useful for interaction feedback, e.g. swelling the glass on press.
-lens.setIntensity(1.5);
-
-// After changing options. Regenerates the displacement map.
-lens.update({ depth: 32 });
-
-// Removes everything the lens added to the document.
-lens.destroy();
+// Moving the dock? One cheap call per frame keeps the refraction aligned.
+dock.addEventListener("pointermove", () => lens.sync());
 ```
 
-Options (all optional):
+That's the whole integration. Sizing, styling, and positioning of the lens element stay yours; the library only manages what's inside it. `lens.update({ depth: 32 })` changes the optics, `lens.setIntensity(1.5)` swells the glass for press feedback, `lens.destroy()` removes every trace.
+
+## How it works
+
+A signed distance field of the lens shape is rendered to a canvas as a displacement map: red encodes horizontal shift, green vertical, strongest at the rim and zero in the flat center. That map drives an SVG `feDisplacementMap` filter applied to a pixel-aligned copy of the backdrop inside the lens, because a filter can only bend an element's own pixels, never what's behind it. The same distance field's surface normals generate the specular rim light and the chromatic aberration, so the refraction, the fringe, and the highlight always describe the same physical surface; that agreement is what makes it read as glass instead of decoration. The map only regenerates when the shape changes, so moving the lens is just a transform update, cheap enough for every frame of a drag.
+
+## API
+
+`createLiquidLens(frame, backdrop, options?)` returns `{ update, sync, setIntensity, destroy }`. Options, all optional:
 
 | Option | Default | Meaning |
 | --- | --- | --- |
@@ -67,49 +58,20 @@ Options (all optional):
 | `specular` | `1` | Strength of the specular rim highlight, 0 to 1 |
 | `borderRadius` | computed style | Corner radius in px, read from the frame if omitted |
 
-### `createGlassFilter(doc?)`
-
-The low-level primitive, for when you want to manage the DOM yourself. It builds the SVG filter, injects it into the document, and returns a handle:
-
-```ts
-import { createGlassFilter } from "caustics";
-
-const glass = createGlassFilter();
-
-glass.update({
-  width: 200,
-  height: 120,
-  borderRadius: 48,
-  depth: 24,
-  curvature: 0.4,
-  splay: 0,
-  aberration: 0.12,
-  blur: 0.2,
-  saturation: 1.15,
-});
-
-myElement.style.filter = glass.cssFilter;
-```
-
-You are then responsible for giving `myElement` content to bend, typically a copy of whatever sits behind it.
-
-### Math utilities
-
-The underlying functions are exported for direct use: `roundedRectSDF`, `computeDisplacementField`, `displacementFieldToPixels`, `renderDisplacementMapToCanvas`, and `renderSpecularToCanvas`. They are pure (apart from the canvas renders) and have no DOM dependencies beyond the canvas API.
+For full control there is also `createGlassFilter()` (builds and manages just the SVG filter; you supply the DOM structure) and the raw math: `roundedRectSDF`, `computeDisplacementField`, `displacementFieldToPixels`, `renderDisplacementMapToCanvas`, `renderSpecularToCanvas`. React bindings live in `@caustics/react` (`useLiquidLens` hook and a `<LiquidLens>` component).
 
 ## Limitations
 
-- The backdrop clone is a snapshot. If the backdrop's content changes, destroy the lens and create it again.
-- Content that does not survive `cloneNode` (live `<video>`, `<canvas>` state, iframes) will not appear refracted.
-- The lens shows a copy of the backdrop, not the actual pixels behind it, so it only works over content you control.
+- The lens refracts a clone of the backdrop, not the live pixels behind it, so it only works over content you control. The clone is a snapshot; recreate the lens if the backdrop's content changes.
+- Content that does not survive `cloneNode` (playing `<video>`, `<canvas>` state, iframes) appears frozen or blank inside the lens.
 
 ## Development
 
 ```sh
 pnpm install
-pnpm build        # build all packages
-pnpm test         # run unit tests
+pnpm build                          # build all packages
+pnpm test                           # run unit tests
 pnpm --filter @caustics/debug dev   # interactive playground at localhost:5173
 ```
 
-The repo is a pnpm workspace: `packages/core` is the zero-dependency library, `apps/debug` is a playground with sliders for every parameter and a live view of the generated displacement map.
+pnpm workspace: `packages/core` is the zero-dependency library (`caustics`), `packages/react` the React bindings, `apps/debug` a playground with a slider for every parameter and live views of the generated displacement and specular maps.

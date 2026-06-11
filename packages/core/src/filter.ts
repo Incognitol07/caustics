@@ -15,7 +15,7 @@ const CHANNEL_MATRICES = {
 
 /** The optical (non-geometry) knobs of the glass effect. */
 export interface GlassEffectOptions {
-  /** 0..1 — relative extra displacement of red vs blue (chromatic aberration) */
+  /** 0..1: relative extra displacement of red vs blue (chromatic aberration) */
   aberration: number;
   /** Gaussian blur stdDeviation in px applied to the refracted content */
   blur: number;
@@ -23,7 +23,7 @@ export interface GlassEffectOptions {
   saturation: number;
   /** Light direction in degrees: 0 lights the top edge, 90 the right edge */
   lightAngle: number;
-  /** 0..1 — strength of the specular rim highlight */
+  /** 0..1: strength of the specular rim highlight */
   specular: number;
 }
 
@@ -40,7 +40,7 @@ export interface GlassFilter {
   /**
    * Regenerates the displacement and specular maps and re-tunes the filter.
    * `resolution` (samples per CSS px) overrides the devicePixelRatio
-   * default — pass ~0.5 when updating every frame of a shape animation.
+   * default; pass ~0.5 when updating every frame of a shape animation.
    */
   update(options: GlassFilterOptions, resolution?: number): void;
   /**

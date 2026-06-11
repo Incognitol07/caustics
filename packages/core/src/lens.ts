@@ -5,11 +5,11 @@ const LENS_MARKER = "data-caustics-lens";
 export interface LiquidLensOptions {
   /** Maximum displacement at the rim, in px (default 24) */
   depth?: number;
-  /** 0..1 — width of the curved rim relative to the lens size (default 0.4) */
+  /** 0..1: width of the curved rim relative to the lens size (default 0.4) */
   curvature?: number;
-  /** 0..1 — blends displacement from edge-normal to radial (default 0.59) */
+  /** 0..1: blends displacement from edge-normal to radial (default 0.59) */
   splay?: number;
-  /** 0..1 — chromatic aberration strength (default 0.05) */
+  /** 0..1: chromatic aberration strength (default 0.05) */
   aberration?: number;
   /** Blur in px applied to the refracted content (default 0.2) */
   blur?: number;
@@ -17,7 +17,7 @@ export interface LiquidLensOptions {
   saturation?: number;
   /** Light direction in degrees: 0 lights the top edge, 90 the right edge (default 0) */
   lightAngle?: number;
-  /** 0..1 — strength of the specular rim highlight (default 1) */
+  /** 0..1: strength of the specular rim highlight (default 1) */
   specular?: number;
   /** Corner radius in px; defaults to the frame's computed border-radius */
   borderRadius?: number;
@@ -27,7 +27,7 @@ export interface LiquidLens {
   /**
    * Merges in new options and regenerates the displacement map.
    * `resolution` (samples per CSS px) overrides the devicePixelRatio
-   * default — pass ~0.5 when updating every frame of a size morph.
+   * default; pass ~0.5 when updating every frame of a size morph.
    */
   update(options?: LiquidLensOptions, resolution?: number): void;
   /**
@@ -66,7 +66,7 @@ const DEFAULTS: Required<Omit<LiquidLensOptions, "borderRadius">> = {
  * the backdrop and inside it in layout terms (any positioned descendant
  * works).
  *
- * Note: the clone is a snapshot — if the backdrop's content changes, call
+ * Note: the clone is a snapshot; if the backdrop's content changes, call
  * `destroy()` and create the lens again.
  */
 export function createLiquidLens(
@@ -78,7 +78,7 @@ export function createLiquidLens(
   let settings: LiquidLensOptions & typeof DEFAULTS = { ...DEFAULTS, ...options };
 
   // Mark the frame so clones of the backdrop can exclude it (the frame is
-  // usually a descendant of the backdrop — cloning it back into itself
+  // usually a descendant of the backdrop; cloning it back into itself
   // would nest lenses indefinitely).
   frame.setAttribute(LENS_MARKER, "");
 

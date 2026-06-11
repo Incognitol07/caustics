@@ -58,8 +58,9 @@ export function useLiquidLens(
     options.aberration,
     options.blur,
     options.saturation,
+    options.lightAngle,
+    options.specular,
     options.borderRadius,
-    options.shine,
   ]);
 
   return lensRef;

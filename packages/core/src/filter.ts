@@ -1,5 +1,6 @@
 import { computeDisplacementField } from "./displacement";
 import { renderDisplacementMapToCanvas } from "./map";
+import { renderSpecularToCanvas } from "./specular";
 import type { LensParams } from "./types";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -19,6 +20,10 @@ export interface GlassFilterOptions extends LensParams {
   blur: number;
   /** Color saturation multiplier; 1 leaves colors unchanged */
   saturation: number;
+  /** Light direction in degrees: 0 lights the top edge, 90 the right edge */
+  lightAngle: number;
+  /** 0..1 — strength of the specular rim highlight */
+  specular: number;
 }
 
 export interface GlassFilter {
@@ -88,6 +93,13 @@ export function createGlassFilter(doc: Document = document): GlassFilter {
     result: "map",
   });
 
+  const specularImage = fe("feImage", {
+    x: "0",
+    y: "0",
+    preserveAspectRatio: "none",
+    result: "specular",
+  });
+
   const displaceChannel = (channel: keyof typeof CHANNEL_MATRICES): SVGElement => {
     const displaced = fe("feDisplacementMap", {
       in: "SourceGraphic",
@@ -139,11 +151,17 @@ export function createGlassFilter(doc: Document = document): GlassFilter {
     in: "softened",
     type: "saturate",
     values: "1",
+    result: "glass",
   });
+
+  // The specular rim light, screen-blended so it brightens like a real
+  // highlight instead of hazing like an overlay.
+  fe("feBlend", { in: "glass", in2: "specular", mode: "screen" });
 
   doc.body.appendChild(svg);
 
   const mapCanvas = doc.createElement("canvas");
+  const specularCanvas = doc.createElement("canvas");
 
   // Scale state lives outside update() so per-frame intensity changes can
   // re-tune displacement magnitude without regenerating the map.
@@ -180,6 +198,13 @@ export function createGlassFilter(doc: Document = document): GlassFilter {
       const field = computeDisplacementField(options, resolution);
       renderDisplacementMapToCanvas(mapCanvas, field, { scale: depth });
 
+      renderSpecularToCanvas(
+        specularCanvas,
+        options,
+        { lightAngle: options.lightAngle, strength: options.specular },
+        resolution,
+      );
+
       // Both href forms are needed: Safari/Firefox honor xlink:href,
       // Chromium honors href.
       const mapDataUrl = mapCanvas.toDataURL("image/png");
@@ -187,6 +212,12 @@ export function createGlassFilter(doc: Document = document): GlassFilter {
       mapImage.setAttributeNS(XLINK_NS, "href", mapDataUrl);
       mapImage.setAttribute("width", String(options.width));
       mapImage.setAttribute("height", String(options.height));
+
+      const specularDataUrl = specularCanvas.toDataURL("image/png");
+      specularImage.setAttribute("href", specularDataUrl);
+      specularImage.setAttributeNS(XLINK_NS, "href", specularDataUrl);
+      specularImage.setAttribute("width", String(options.width));
+      specularImage.setAttribute("height", String(options.height));
 
       // feDisplacementMap shifts by scale * (channel - 0.5), so scale =
       // 2 * depth recovers the encoded pixel displacement.

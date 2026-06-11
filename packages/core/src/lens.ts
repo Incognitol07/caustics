@@ -2,16 +2,6 @@ import { createGlassFilter } from "./filter";
 
 const LENS_MARKER = "data-glasskit-lens";
 
-const SHINE_GRADIENT =
-  "linear-gradient(135deg, rgba(255,255,255,0.18), rgba(255,255,255,0) 35%, rgba(255,255,255,0) 65%, rgba(255,255,255,0.08))";
-
-const SHINE_SHADOW = [
-  "inset 0 0 0 1px rgba(255,255,255,0.12)",
-  "inset 2px 2px 2px -1px rgba(255,255,255,0.85)",
-  "inset -2px -2px 2px -1px rgba(255,255,255,0.45)",
-  "inset 0 0 10px 1px rgba(255,255,255,0.12)",
-].join(", ");
-
 export interface LiquidLensOptions {
   /** Maximum displacement at the rim, in px (default 24) */
   depth?: number;
@@ -25,10 +15,12 @@ export interface LiquidLensOptions {
   blur?: number;
   /** Saturation multiplier for the refracted content (default 1.15) */
   saturation?: number;
+  /** Light direction in degrees: 0 lights the top edge, 90 the right edge (default -35) */
+  lightAngle?: number;
+  /** 0..1 — strength of the specular rim highlight (default 0.8) */
+  specular?: number;
   /** Corner radius in px; defaults to the frame's computed border-radius */
   borderRadius?: number;
-  /** Render the specular rim highlight layer (default true) */
-  shine?: boolean;
 }
 
 export interface LiquidLens {
@@ -56,7 +48,8 @@ const DEFAULTS: Required<Omit<LiquidLensOptions, "borderRadius">> = {
   aberration: 0.12,
   blur: 0.2,
   saturation: 1.15,
-  shine: true,
+  lightAngle: -35,
+  specular: 0.8,
 };
 
 /**
@@ -64,9 +57,10 @@ const DEFAULTS: Required<Omit<LiquidLensOptions, "borderRadius">> = {
  *
  * The lens cannot sample the page behind it, so it clones `backdrop` into
  * itself and keeps the clone pixel-aligned with the original; the SVG filter
- * then bends, fringes, and saturates that copy, and a specular shine layer
- * on top provides the glossy rim. The frame must be visually on top of the
- * backdrop and inside it in layout terms (any positioned descendant works).
+ * then bends, fringes, and saturates that copy and blends a specular rim
+ * light over it for the glossy edge. The frame must be visually on top of
+ * the backdrop and inside it in layout terms (any positioned descendant
+ * works).
  *
  * Note: the clone is a snapshot — if the backdrop's content changes, call
  * `destroy()` and create the lens again.
@@ -119,18 +113,6 @@ export function createLiquidLens(
   refraction.appendChild(clone);
   frame.appendChild(refraction);
 
-  // Specular rim highlight — the glossy edge light of the waterdrop look.
-  const shine = doc.createElement("div");
-  Object.assign(shine.style, {
-    position: "absolute",
-    inset: "0",
-    borderRadius: "inherit",
-    pointerEvents: "none",
-    background: SHINE_GRADIENT,
-    boxShadow: SHINE_SHADOW,
-  });
-  frame.appendChild(shine);
-
   function sync(): void {
     const frameRect = frame.getBoundingClientRect();
     const backdropRect = backdrop.getBoundingClientRect();
@@ -156,12 +138,13 @@ export function createLiquidLens(
       aberration: settings.aberration,
       blur: settings.blur,
       saturation: settings.saturation,
+      lightAngle: settings.lightAngle,
+      specular: settings.specular,
     });
     // The filter id cycles on update (WebKit repaint workaround), so the
     // reference must be re-applied.
     refraction.style.filter = glassFilter.cssFilter;
 
-    shine.style.display = settings.shine ? "" : "none";
     clone.style.width = `${backdrop.clientWidth}px`;
     clone.style.height = `${backdrop.clientHeight}px`;
     sync();
@@ -183,7 +166,6 @@ export function createLiquidLens(
     destroy(): void {
       resizeObserver?.disconnect();
       refraction.remove();
-      shine.remove();
       glassFilter.destroy();
       frame.removeAttribute(LENS_MARKER);
     },

@@ -2,6 +2,7 @@ import {
   computeDisplacementField,
   createLiquidLens,
   renderDisplacementMapToCanvas,
+  renderSpecularToCanvas,
   type LiquidLens,
   type LiquidLensOptions,
 } from "@glasskit/core";
@@ -20,6 +21,8 @@ const ids = [
   "aberration",
   "blur",
   "saturation",
+  "lightAngle",
+  "specular",
 ] as const;
 type ControlId = (typeof ids)[number];
 
@@ -35,7 +38,7 @@ function num(id: ControlId): number {
   return Number(inputs[id].value);
 }
 
-function readOptions(): Required<Omit<LiquidLensOptions, "shine">> {
+function readOptions(): Required<LiquidLensOptions> {
   return {
     borderRadius: num("borderRadius"),
     depth: num("depth"),
@@ -44,6 +47,8 @@ function readOptions(): Required<Omit<LiquidLensOptions, "shine">> {
     aberration: num("aberration"),
     blur: num("blur"),
     saturation: num("saturation"),
+    lightAngle: num("lightAngle"),
+    specular: num("specular"),
   };
 }
 
@@ -51,6 +56,7 @@ function readOptions(): Required<Omit<LiquidLensOptions, "shine">> {
 // Elements
 
 const mapCanvas = document.getElementById("map-preview") as HTMLCanvasElement;
+const specularCanvas = document.getElementById("specular-preview") as HTMLCanvasElement;
 const background = document.getElementById("background") as HTMLElement;
 const lensEl = document.getElementById("lens") as HTMLElement;
 
@@ -166,6 +172,21 @@ function update(): void {
   renderDisplacementMapToCanvas(mapCanvas, field, { scale: Math.max(options.depth, 1) });
   mapCanvas.style.width = `${field.width}px`;
   mapCanvas.style.height = `${field.height}px`;
+
+  renderSpecularToCanvas(
+    specularCanvas,
+    {
+      width: num("width"),
+      height: num("height"),
+      borderRadius: options.borderRadius,
+      depth: options.depth,
+      curvature: options.curvature,
+      splay: options.splay,
+    },
+    { lightAngle: options.lightAngle, strength: options.specular },
+  );
+  specularCanvas.style.width = `${num("width")}px`;
+  specularCanvas.style.height = `${num("height")}px`;
 }
 
 // ---------------------------------------------------------------------------

@@ -12,7 +12,7 @@ CSS cannot bend the pixels behind an element, so glasskit takes the approach Aav
 2. Feed that map into an SVG `feDisplacementMap` filter, applied with plain `filter` (not `backdrop-filter`, which Safari and Firefox handle inconsistently for SVG filters).
 3. Since the filter can only bend the element's own content, place a pixel-aligned copy of the backdrop inside the lens and bend that.
 
-On top of the refraction, the filter displaces the red, green, and blue channels by slightly different amounts (chromatic aberration), then applies a small blur and a saturation boost. A CSS layer adds the specular rim highlight.
+On top of the refraction, the filter displaces the red, green, and blue channels by slightly different amounts (chromatic aberration), then applies a small blur and a saturation boost. A specular rim light is computed from the same distance field (surface normals against a configurable light direction) and screen-blended over the result, so the glossy edge follows the lens shape exactly.
 
 The map is only regenerated when the lens shape changes. Moving the lens is a transform update, so dragging stays cheap.
 
@@ -61,8 +61,9 @@ Options (all optional):
 | `aberration` | `0.12` | Chromatic aberration strength, 0 to 1 |
 | `blur` | `0.2` | Blur in px applied to the refracted content |
 | `saturation` | `1.15` | Saturation multiplier for the refracted content |
+| `lightAngle` | `-35` | Light direction in degrees: 0 lights the top edge, 90 the right edge |
+| `specular` | `0.8` | Strength of the specular rim highlight, 0 to 1 |
 | `borderRadius` | computed style | Corner radius in px, read from the frame if omitted |
-| `shine` | `true` | Whether to render the specular rim highlight |
 
 ### `createGlassFilter(doc?)`
 
@@ -92,7 +93,7 @@ You are then responsible for giving `myElement` content to bend, typically a cop
 
 ### Math utilities
 
-The underlying functions are exported for direct use: `roundedRectSDF`, `computeDisplacementField`, `displacementFieldToPixels`, and `renderDisplacementMapToCanvas`. They are pure (apart from the canvas render) and have no DOM dependencies beyond the canvas API.
+The underlying functions are exported for direct use: `roundedRectSDF`, `computeDisplacementField`, `displacementFieldToPixels`, `renderDisplacementMapToCanvas`, and `renderSpecularToCanvas`. They are pure (apart from the canvas renders) and have no DOM dependencies beyond the canvas API.
 
 ## Limitations
 

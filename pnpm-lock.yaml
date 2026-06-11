@@ -8,6 +8,19 @@ importers:
 
   .: {}
 
+  apps/debug:
+    dependencies:
+      '@glasskit/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vite:
+        specifier: ^6.0.0
+        version: 6.4.3
+
   packages/core:
     devDependencies:
       typescript:

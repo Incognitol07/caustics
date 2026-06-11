@@ -79,6 +79,8 @@ let dragging = false;
 let rafId: number | undefined;
 let lastTime = 0;
 
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+
 function applyTransform(): void {
   const left = (background.clientWidth - num("width")) / 2 + springX.value;
   const top = (background.clientHeight - num("height")) / 2 + springY.value;
@@ -105,9 +107,18 @@ function tick(now: number): void {
 
   springX.target = target.x;
   springY.target = target.y;
-  springX.step(dt);
-  springY.step(dt);
-  press.step(dt);
+
+  if (reducedMotion.matches) {
+    // No wobble, stretch, or swell for users who asked for less motion;
+    // the lens just follows the pointer directly.
+    springX.snap();
+    springY.snap();
+    press.snap();
+  } else {
+    springX.step(dt);
+    springY.step(dt);
+    press.step(dt);
+  }
 
   applyTransform();
   lens?.setIntensity(1 + 0.9 * press.value);

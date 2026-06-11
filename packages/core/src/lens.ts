@@ -157,6 +157,9 @@ export function createLiquidLens(
       blur: settings.blur,
       saturation: settings.saturation,
     });
+    // The filter id cycles on update (WebKit repaint workaround), so the
+    // reference must be re-applied.
+    refraction.style.filter = glassFilter.cssFilter;
 
     shine.style.display = settings.shine ? "" : "none";
     clone.style.width = `${backdrop.clientWidth}px`;

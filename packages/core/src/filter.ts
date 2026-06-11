@@ -22,7 +22,12 @@ export interface GlassFilterOptions extends LensParams {
 }
 
 export interface GlassFilter {
-  /** Value for the CSS `filter` property, e.g. `url(#glasskit-1)`. */
+  /**
+   * Value for the CSS `filter` property, e.g. `url(#glasskit-1-0)`.
+   * Re-read and re-apply this after every `update()`: the filter id cycles
+   * on update to force a repaint in WebKit, which otherwise ignores changes
+   * to the primitives of an already-referenced filter.
+   */
   readonly cssFilter: string;
   /** Regenerates the displacement map and re-tunes the filter primitives. */
   update(options: GlassFilterOptions): void;
@@ -52,7 +57,9 @@ let nextFilterId = 1;
  * content just outside the element's bounds.
  */
 export function createGlassFilter(doc: Document = document): GlassFilter {
-  const id = `glasskit-${nextFilterId++}`;
+  const idBase = `glasskit-${nextFilterId++}`;
+  let generation = 0;
+  let id = `${idBase}-${generation}`;
 
   const svg = doc.createElementNS(SVG_NS, "svg");
   svg.setAttribute("width", "0");
@@ -152,9 +159,18 @@ export function createGlassFilter(doc: Document = document): GlassFilter {
   };
 
   return {
-    cssFilter: `url(#${id})`,
+    get cssFilter() {
+      return `url(#${id})`;
+    },
 
     update(options: GlassFilterOptions): void {
+      // Cycle the filter id so WebKit notices the change; it does not
+      // reliably repaint when an already-referenced filter's primitives
+      // are mutated in place.
+      generation += 1;
+      id = `${idBase}-${generation}`;
+      filter.setAttribute("id", id);
+
       // Encode the field so `depth` px spans the full channel range, giving
       // the 8-bit map maximum precision.
       const depth = Math.max(options.depth, 1);

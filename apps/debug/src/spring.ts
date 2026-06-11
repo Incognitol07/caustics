@@ -25,6 +25,12 @@ export class Spring {
     this.value += this.velocity * dt;
   }
 
+  /** Jumps straight to the target with no motion (reduced-motion mode). */
+  snap(): void {
+    this.value = this.target;
+    this.velocity = 0;
+  }
+
   get settled(): boolean {
     return (
       Math.abs(this.velocity) < 0.01 && Math.abs(this.target - this.value) < 0.01

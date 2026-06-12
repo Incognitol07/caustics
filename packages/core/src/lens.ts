@@ -29,6 +29,14 @@ export interface LiquidLensOptions {
    * The static refraction itself is unaffected — it is not motion.
    */
   respectReducedMotion?: boolean;
+  /**
+   * When true (the default), the lens listens for scrolls anywhere in the
+   * document and keeps the refraction aligned by itself: the backdrop
+   * scrolling under a fixed lens, scrollable containers inside the
+   * backdrop, and page scrolls that move the frame relative to the
+   * backdrop. Set false to drive alignment manually through `sync()`.
+   */
+  trackScroll?: boolean;
 }
 
 export interface LiquidLens {
@@ -39,10 +47,12 @@ export interface LiquidLens {
    */
   update(options?: LiquidLensOptions, resolution?: number): void;
   /**
-   * Re-aligns the backdrop copy with the real backdrop by measuring both
-   * elements. Call after the frame moved for a reason you cannot quantify
-   * (e.g. the backdrop scrolled). Forces a layout pass; on per-frame paths
-   * where the position is already known, prefer `syncTo`.
+   * Re-aligns the backdrop copy with the real backdrop: measures both
+   * elements and mirrors the backdrop's scroll position into the copy.
+   * Scrolling is handled automatically while `trackScroll` is on, so this
+   * is for movement the lens cannot see, such as a layout change that
+   * shifted the frame. Forces a layout pass; on per-frame paths where the
+   * position is already known, prefer `syncTo`.
    */
   sync(): void;
   /**
@@ -66,6 +76,7 @@ export interface LiquidLens {
 const DEFAULTS: Required<Omit<LiquidLensOptions, "borderRadius">> = {
   ...presets.full,
   respectReducedMotion: true,
+  trackScroll: true,
 };
 
 /**
@@ -78,8 +89,12 @@ const DEFAULTS: Required<Omit<LiquidLensOptions, "borderRadius">> = {
  * the backdrop and inside it in layout terms (any positioned descendant
  * works).
  *
- * Note: the clone is a snapshot; if the backdrop's content changes, call
- * `destroy()` and create the lens again.
+ * Scrolling — the backdrop under the lens, scrollable containers inside
+ * it, and page scrolls that move the frame — is mirrored into the copy
+ * automatically (see `trackScroll`).
+ *
+ * Note: the clone is a snapshot of the backdrop's content; if the content
+ * itself changes, call `destroy()` and create the lens again.
  */
 export function createLiquidLens(
   frame: HTMLElement,
@@ -139,6 +154,10 @@ export function createLiquidLens(
     height: `${backdrop.clientHeight}px`,
     pointerEvents: "none",
   });
+  // The clone is sized to the backdrop's clientWidth, which excludes any
+  // scrollbar; rendering its own scrollbar would shrink its content area
+  // below the original's and shift every line of text.
+  clone.style.setProperty("scrollbar-width", "none");
 
   refraction.appendChild(clone);
   frame.appendChild(refraction);
@@ -159,7 +178,94 @@ export function createLiquidLens(
     const frameRect = frame.getBoundingClientRect();
     const backdropRect = backdrop.getBoundingClientRect();
     syncTo(frameRect.left - backdropRect.left, frameRect.top - backdropRect.top);
+    mirrorScroll(backdrop);
   }
+
+  /**
+   * Finds the clone's copy of a backdrop descendant by child-index path.
+   * Lens frames are removed from the clone, so they are skipped when
+   * counting siblings; an element inside a lens frame has no counterpart.
+   */
+  function findCloneCounterpart(el: Element): Element | null {
+    const path: number[] = [];
+    for (let node: Element = el; node !== backdrop; ) {
+      const parent = node.parentElement;
+      if (!parent || node.hasAttribute(LENS_MARKER)) {
+        return null;
+      }
+      let index = 0;
+      for (let sib = node.previousElementSibling; sib; sib = sib.previousElementSibling) {
+        if (!sib.hasAttribute(LENS_MARKER)) {
+          index += 1;
+        }
+      }
+      path.push(index);
+      node = parent;
+    }
+
+    let counterpart: Element | null = clone;
+    for (let i = path.length - 1; i >= 0 && counterpart; i--) {
+      counterpart = counterpart.children.item(path[i]);
+    }
+    return counterpart;
+  }
+
+  /** Copies a scroller's offsets onto its counterpart in the clone. */
+  function mirrorScroll(scroller: Element): void {
+    const target = scroller === backdrop ? clone : findCloneCounterpart(scroller);
+    if (!target) {
+      return;
+    }
+    // Smooth scrolling on the copy would lag the assignment behind the
+    // real scroller by an animation.
+    (target as HTMLElement).style?.setProperty("scroll-behavior", "auto");
+    if (target.scrollLeft !== scroller.scrollLeft) {
+      target.scrollLeft = scroller.scrollLeft;
+    }
+    if (target.scrollTop !== scroller.scrollTop) {
+      target.scrollTop = scroller.scrollTop;
+    }
+  }
+
+  // Scroll tracking: one capture-phase listener sees every scroll in the
+  // document — the backdrop itself, scrollers inside it (mirrored into the
+  // clone so the refracted content moves live), and page or ancestor
+  // scrolls, which can shift the frame relative to the backdrop and are
+  // covered by the re-measure. Unrelated scrolls end in the no-op guards.
+  function handleScroll(event: Event): void {
+    const target = event.target as Node | null;
+    if (target && target.nodeType === 1 && backdrop.contains(target)) {
+      mirrorScroll(target as Element);
+    }
+    sync();
+  }
+
+  let scrollTracking = false;
+
+  function setScrollTracking(enabled: boolean): void {
+    const win = doc.defaultView;
+    if (enabled === scrollTracking || !win) {
+      return;
+    }
+    scrollTracking = enabled;
+    if (enabled) {
+      win.addEventListener("scroll", handleScroll, { capture: true, passive: true });
+    } else {
+      win.removeEventListener("scroll", handleScroll, { capture: true });
+    }
+  }
+
+  // cloneNode does not carry scroll positions, so an already-scrolled
+  // backdrop tree would refract its scrolled-to-top state; carry the
+  // offsets over once, then the scroll listener keeps them fresh.
+  if (backdrop.scrollLeft || backdrop.scrollTop) {
+    mirrorScroll(backdrop);
+  }
+  backdrop.querySelectorAll("*").forEach((el) => {
+    if (el.scrollLeft || el.scrollTop) {
+      mirrorScroll(el);
+    }
+  });
 
   // Size of the frame at the last update, so the ResizeObserver can skip
   // sizes that an explicit update (e.g. a per-frame morph) already handled.
@@ -204,6 +310,7 @@ export function createLiquidLens(
 
     clone.style.width = `${backdrop.clientWidth}px`;
     clone.style.height = `${backdrop.clientHeight}px`;
+    setScrollTracking(settings.trackScroll);
     sync();
   }
 
@@ -227,6 +334,7 @@ export function createLiquidLens(
     syncTo,
     setIntensity,
     destroy(): void {
+      setScrollTracking(false);
       reducedMotion?.removeEventListener?.("change", onMotionPreferenceChange);
       resizeObserver?.disconnect();
       refraction.remove();

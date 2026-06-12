@@ -1,8 +1,10 @@
 import type { LiquidLensOptions } from "./lens";
 
-/** A complete set of effect options (geometry-independent). */
+/** A complete set of effect options (geometry- and behavior-independent). */
 export type LensPreset = Readonly<
-  Required<Omit<LiquidLensOptions, "borderRadius" | "respectReducedMotion">>
+  Required<
+    Omit<LiquidLensOptions, "borderRadius" | "respectReducedMotion" | "trackScroll">
+  >
 >;
 
 export type LensPresetName = keyof typeof presets;

@@ -36,7 +36,9 @@ const lens = createLiquidLens(
 dock.addEventListener("pointermove", () => lens.sync());
 ```
 
-That's the whole integration. Sizing, styling, and positioning of the lens element stay yours; the library only manages what's inside it. `lens.update({ depth: 32 })` changes the optics, `lens.setIntensity(1.5)` swells the glass for press feedback, `lens.destroy()` removes every trace.
+Scrolling needs no calls at all: the lens watches scroll events itself, so content scrolling under the glass — the backdrop, a feed inside it, or the page — bends live, the way it does in the system version.
+
+That's the whole integration. Sizing, styling, and positioning of the lens element stay yours; the library only manages what's inside it. `lens.update({ depth: 32 })` changes the optics, `lens.setIntensity(1.5)` swells the glass for press feedback, `lens.destroy()` removes every trace. On devices where the full effect is heavy, start from a named preset instead of tuning blind: `presets.lean` drops the two passes that dominate filter cost, `presets.minimal` reduces the filter to a single displacement pass.
 
 ## How it works
 
@@ -44,7 +46,7 @@ A signed distance field of the lens shape is rendered to a canvas as a displacem
 
 ## API
 
-`createLiquidLens(frame, backdrop, options?)` returns `{ update, sync, setIntensity, destroy }`. Options, all optional:
+`createLiquidLens(frame, backdrop, options?)` returns `{ update, sync, syncTo, setIntensity, destroy }` — `syncTo(offsetX, offsetY)` is the layout-read-free variant of `sync()` for per-frame paths where the frame's position is already known. Options, all optional:
 
 | Option | Default | Meaning |
 | --- | --- | --- |
@@ -57,12 +59,16 @@ A signed distance field of the lens shape is rendered to a canvas as a displacem
 | `lightAngle` | `0` | Light direction in degrees: 0 lights the top edge, 90 the right edge |
 | `specular` | `1` | Strength of the specular rim highlight, 0 to 1 |
 | `borderRadius` | computed style | Corner radius in px, read from the frame if omitted |
+| `respectReducedMotion` | `true` | Stills press-swell feedback while the OS asks for reduced motion |
+| `trackScroll` | `true` | Keeps the refraction aligned with backdrop, inner, and page scrolling |
+
+Setting `aberration`, `blur`, or `specular` to `0` (or `saturation` to `1`) removes that pass from the SVG filter entirely rather than running it at zero strength — the named `presets` are just these knobs bundled into `full`, `lean`, and `minimal` tiers.
 
 For full control there is also `createGlassFilter()` (builds and manages just the SVG filter; you supply the DOM structure) and the raw math: `roundedRectSDF`, `computeDisplacementField`, `displacementFieldToPixels`, `renderDisplacementMapToCanvas`, `renderSpecularToCanvas`. React bindings live in `@caustics/react` (`useLiquidLens` hook and a `<LiquidLens>` component).
 
 ## Limitations
 
-- The lens refracts a clone of the backdrop, not the live pixels behind it, so it only works over content you control. The clone is a snapshot; recreate the lens if the backdrop's content changes.
+- The lens refracts a clone of the backdrop, not the live pixels behind it, so it only works over content you control. Scrolling is mirrored into the clone automatically, but the content itself is a snapshot; recreate the lens if the backdrop's content changes.
 - Content that does not survive `cloneNode` (playing `<video>`, `<canvas>` state, iframes) appears frozen or blank inside the lens.
 
 ## Development

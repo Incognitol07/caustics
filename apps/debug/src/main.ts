@@ -193,6 +193,7 @@ const MENU_OPTIONS = {
 function currentOptions(): Required<LiquidLensOptions> {
   return {
     respectReducedMotion: true,
+    trackScroll: true,
     borderRadius: geomR.value,
     depth: num("depth"),
     curvature: num("curvature"),
@@ -459,11 +460,6 @@ menuEl.style.borderRadius = `${menuR.value}px`;
 menuLens = createLiquidLens(menuEl, controlsEl, {
   ...MENU_OPTIONS,
   borderRadius: menuR.value,
-});
-
-// Sync refraction on scroll
-controlsEl.addEventListener("scroll", () => {
-  menuLens?.sync();
 });
 
 // Toggle menu on click (excluding option clicks)

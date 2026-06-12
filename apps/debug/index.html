@@ -73,6 +73,10 @@
         min-height: 100vh;
         background: var(--bg);
         color: var(--text);
+        /* Android Chrome paints a translucent blue box over a tapped
+           element's bounds; on the morphing glass it reads as a glitch.
+           Keyboard focus is still visible via the :focus-visible styles. */
+        -webkit-tap-highlight-color: transparent;
       }
 
       /* ----------------------------------------------------------------- */

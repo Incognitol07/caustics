@@ -150,7 +150,34 @@ function buildPipeline(
   filter: SVGElement,
   config: PipelineConfig,
 ): PipelineHandles {
-  filter.replaceChildren();
+  const primitives = Array.from(filter.children);
+  let mapImage = primitives.find(el => el.tagName === "feImage" && el.getAttribute("result") === "map") as SVGElement | undefined;
+  let specularImage = primitives.find(el => el.tagName === "feImage" && el.getAttribute("result") === "specular") as SVGElement | undefined;
+
+  // Remove everything except the reused feImages
+  for (const child of primitives) {
+    if (child !== mapImage && child !== specularImage) {
+      child.remove();
+    }
+  }
+
+  // Create them if they didn't exist
+  if (!mapImage) {
+    mapImage = doc.createElementNS(SVG_NS, "feImage");
+    mapImage.setAttribute("x", "0");
+    mapImage.setAttribute("y", "0");
+    mapImage.setAttribute("preserveAspectRatio", "none");
+    mapImage.setAttribute("result", "map");
+    filter.appendChild(mapImage);
+  }
+  if (!specularImage) {
+    specularImage = doc.createElementNS(SVG_NS, "feImage");
+    specularImage.setAttribute("x", "0");
+    specularImage.setAttribute("y", "0");
+    specularImage.setAttribute("preserveAspectRatio", "none");
+    specularImage.setAttribute("result", "specular");
+    filter.appendChild(specularImage);
+  }
 
   const fe = (name: string, attrs: Record<string, string>): SVGElement => {
     const el = doc.createElementNS(SVG_NS, name);
@@ -160,12 +187,6 @@ function buildPipeline(
     filter.appendChild(el);
     return el;
   };
-
-  const image = (result: string): SVGElement =>
-    fe("feImage", { x: "0", y: "0", preserveAspectRatio: "none", result });
-
-  const mapImage = image("map");
-  const specularImage = config.specular ? image("specular") : undefined;
 
   const displace = (result: string): SVGElement =>
     fe("feDisplacementMap", {
@@ -250,7 +271,7 @@ function buildPipeline(
     fe("feBlend", { in: current, in2: "specular", mode: "screen" });
   }
 
-  return { config, mapImage, specularImage, displacements, blur, saturate };
+  return { config, mapImage, specularImage: config.specular ? specularImage : undefined, displacements, blur, saturate };
 }
 
 /** Points an feImage at a canvas's current content, stretched to width x height px. */

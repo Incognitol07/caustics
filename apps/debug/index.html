@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>caustics</title>
+    <script>
+      // Set the theme before first paint so a saved light theme doesn't
+      // flash dark; main.ts re-applies it and syncs the toggle icon.
+      (() => {
+        const stored = localStorage.getItem("caustics-debug-theme");
+        document.documentElement.dataset.theme =
+          stored === "light" || stored === "dark"
+            ? stored
+            : matchMedia("(prefers-color-scheme: light)").matches
+              ? "light"
+              : "dark";
+      })();
+    </script>
     <style>
       :root {
         color-scheme: dark;
@@ -11,16 +24,47 @@
         --bg: #0a0a0e;
         --panel: #111116;
         --border: #1f1f26;
+        --border-hover: #2d2d36;
+        --border-focus: #43434f;
         --text: #ececf1;
         --text-dim: #9b9ba6;
         --text-faint: #595964;
         --track: #28282f;
         --fill: #d8d8e2;
+        --thumb: #fff;
+        --hairline: rgba(255, 255, 255, 0.07);
+        --menu-hover: rgba(255, 255, 255, 0.07);
+        --menu-active: rgba(255, 255, 255, 0.12);
+        --swatch-border: rgba(255, 255, 255, 0.08);
         --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
-        --backdrop-image:
-          repeating-linear-gradient(45deg, #ff5f6d 0 20px, #ffc371 20px 40px),
-          repeating-linear-gradient(-45deg, transparent 0 10px, rgba(0, 0, 0, 0.15) 10px 20px);
+        --backdrop-image: url("https://picsum.photos/id/1018/960/640");
         --backdrop-text: "caustics";
+        --stage-bg: #0a0a0e;
+        --stage-menu-text: #000000;
+        --stage-menu-shadow: rgba(255, 255, 255, 0.55);
+        --stage-menu-row: rgba(255, 255, 255, 0.28);
+        --stage-menu-row-hover: rgba(255, 255, 255, 0.42);
+        --stage-menu-row-active: rgba(255, 255, 255, 0.52);
+        --stage-menu-hairline: rgba(0, 0, 0, 0.08);
+      }
+
+      :root[data-theme="light"] {
+        color-scheme: light;
+        --bg: #f2f2f6;
+        --panel: #ffffff;
+        --border: #e4e4ea;
+        --border-hover: #c8c8d2;
+        --border-focus: #a8a8b4;
+        --text: #1a1a21;
+        --text-dim: #5c5c68;
+        --text-faint: #9b9ba6;
+        --track: #dcdce3;
+        --fill: #3a3a45;
+        --thumb: #1a1a21;
+        --hairline: rgba(0, 0, 0, 0.08);
+        --menu-hover: rgba(0, 0, 0, 0.05);
+        --menu-active: rgba(0, 0, 0, 0.09);
+        --swatch-border: rgba(0, 0, 0, 0.12);
       }
 
       body {
@@ -84,6 +128,83 @@
         border: 1px solid var(--border);
         border-radius: 999px;
         padding: 2px 7px;
+      }
+
+      /* ----------------------------------------------------------------- */
+      /* Theme toggle — Transitions.dev icon swap                           */
+
+      #theme-toggle {
+        margin-left: auto;
+        align-self: center;
+        width: 26px;
+        height: 26px;
+        padding: 0;
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--text-dim);
+        cursor: pointer;
+        transition:
+          color 120ms ease,
+          border-color 120ms ease;
+      }
+
+      #theme-toggle:hover {
+        color: var(--text);
+        border-color: var(--border-hover);
+      }
+
+      #theme-toggle:focus-visible {
+        outline: 1px solid var(--text-faint);
+        outline-offset: 1px;
+      }
+
+      #theme-toggle svg {
+        width: 14px;
+        height: 14px;
+        display: block;
+      }
+
+      :root {
+        --icon-swap-dur: 250ms;
+        --icon-swap-blur: 2px;
+        --icon-swap-start-scale: 0.25;
+        --icon-swap-ease: ease-in-out;
+      }
+
+      .t-icon-swap {
+        position: relative;
+        display: inline-grid;
+        place-items: center;
+      }
+
+      .t-icon-swap .t-icon {
+        grid-area: 1 / 1;
+        display: inline-grid;
+        place-items: center;
+        transition:
+          opacity var(--icon-swap-dur) var(--icon-swap-ease),
+          filter var(--icon-swap-dur) var(--icon-swap-ease),
+          transform var(--icon-swap-dur) var(--icon-swap-ease);
+        will-change: opacity, filter, transform;
+      }
+
+      .t-icon-swap[data-state="a"] .t-icon[data-icon="a"],
+      .t-icon-swap[data-state="b"] .t-icon[data-icon="b"] {
+        opacity: 1;
+        filter: blur(0);
+        transform: scale(1);
+      }
+
+      .t-icon-swap[data-state="a"] .t-icon[data-icon="b"],
+      .t-icon-swap[data-state="b"] .t-icon[data-icon="a"] {
+        opacity: 0;
+        filter: blur(var(--icon-swap-blur));
+        transform: scale(var(--icon-swap-start-scale));
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .t-icon-swap .t-icon { transition: none !important; }
       }
 
       .group {
@@ -176,7 +297,7 @@
         height: 10px;
         margin-top: -4px;
         border-radius: 50%;
-        background: #fff;
+        background: var(--thumb);
         box-shadow: 0 0 0 3px var(--panel);
         transition: transform 120ms ease;
       }
@@ -209,7 +330,7 @@
         height: 10px;
         border: none;
         border-radius: 50%;
-        background: #fff;
+        background: var(--thumb);
         box-shadow: 0 0 0 3px var(--panel);
         transition: transform 120ms ease;
       }
@@ -251,7 +372,7 @@
 
       .preset-btn:hover {
         color: var(--text);
-        border-color: #2d2d36;
+        border-color: var(--border-hover);
       }
 
       .preset-btn:focus-visible {
@@ -282,12 +403,12 @@
       }
 
       input[type="text"]:hover {
-        border-color: #2d2d36;
+        border-color: var(--border-hover);
       }
 
       input[type="text"]:focus-visible {
         outline: none;
-        border-color: #43434f;
+        border-color: var(--border-focus);
       }
 
       .swatches {
@@ -299,7 +420,7 @@
         flex: 1;
         height: 26px;
         padding: 0;
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        border: 1px solid var(--swatch-border);
         border-radius: 5px;
         background-size: cover;
         background-position: center;
@@ -358,6 +479,7 @@
         justify-content: center;
         gap: 40px;
         padding: 32px;
+        background: var(--stage-bg);
       }
 
       .backdrop {
@@ -431,15 +553,19 @@
       /* Morphing Liquid Menu                                               */
 
       #liquid-menu-wrapper {
-        position: relative;
-        margin-top: 12px;
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        z-index: 2;
         display: flex;
-        justify-content: center;
+        justify-content: flex-end;
         /* Pin the menu's top edge so the morph unfurls downward from the
            control, like a menu emerging from its anchor, instead of
            inflating symmetrically around its center. */
         align-items: flex-start;
-        min-height: 100px;
+        width: 172px;
+        height: 96px;
+        pointer-events: none;
       }
 
       #liquid-menu {
@@ -452,22 +578,18 @@
            morph's anchor. */
         transform-origin: 50% 0;
         background: transparent;
-        border: 1px solid var(--border);
+        border: 0;
         box-shadow:
-          0 2px 8px rgba(0, 0, 0, 0.2),
-          0 0 0 0.5px rgba(255, 255, 255, 0.04) inset;
+          0 8px 24px rgba(0, 0, 0, 0.22),
+          0 0 0 1px rgba(255, 255, 255, 0.08) inset;
         user-select: none;
         overflow: hidden;
         transition: border-color 120ms ease;
-      }
-
-      #liquid-menu:hover {
-        border-color: #2d2d36;
+        pointer-events: auto;
       }
 
       #liquid-menu.is-expanded {
         cursor: default;
-        border-color: var(--border);
       }
 
       /* Both content layers are pinned to their own end-state geometry
@@ -476,7 +598,7 @@
          reflowing them every frame. Opacity and transform are driven from
          the morph springs in main.ts — no CSS transitions here, or the
          content would run on its own clock while the frame wobbles. */
-      .menu-collapsed-content,
+      .menu-trigger,
       .menu-expanded-content {
         position: absolute;
         top: 0;
@@ -489,29 +611,36 @@
         will-change: opacity, transform;
       }
 
-      .menu-collapsed-content {
+      .menu-trigger {
         height: 36px;
-        gap: 7px;
-        font-size: 10.5px;
+        padding: 0;
+        background: var(--stage-menu-row);
+        border: 0;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 0;
         font-weight: 600;
-        color: var(--text-dim);
+        color: var(--stage-menu-text);
         letter-spacing: 0.08em;
+        text-shadow: 0 1px 2px var(--stage-menu-shadow);
         text-transform: uppercase;
       }
 
-      #liquid-menu:hover .menu-collapsed-content {
-        color: var(--text);
+      .menu-trigger:focus-visible,
+      .menu-opt-btn:focus-visible {
+        outline: 2px solid currentColor;
+        outline-offset: -4px;
       }
 
-      .menu-collapsed-content .menu-icon {
-        width: 13px;
-        height: 13px;
-        color: var(--text-faint);
+      #liquid-menu:hover .menu-trigger {
+        background: var(--stage-menu-row-hover);
+      }
+
+      .menu-trigger .menu-icon {
+        width: 18px;
+        height: 18px;
+        color: currentColor;
         transition: color 120ms ease;
-      }
-
-      #liquid-menu:hover .menu-collapsed-content .menu-icon {
-        color: var(--text-dim);
       }
 
       /* Apple-menu layout: rows run edge to edge with a hairline between
@@ -526,7 +655,7 @@
         pointer-events: none;
       }
 
-      #liquid-menu.is-expanded .menu-collapsed-content {
+      #liquid-menu.is-expanded .menu-trigger {
         pointer-events: none;
       }
 
@@ -537,9 +666,9 @@
       .menu-opt-btn {
         width: 100%;
         flex: 1;
-        background: transparent;
+        background: var(--stage-menu-row);
         border: none;
-        color: var(--text-dim);
+        color: var(--stage-menu-text);
         font-family: inherit;
         font-size: 11.5px;
         font-weight: 500;
@@ -550,34 +679,30 @@
         gap: 8px;
         padding: 0 14px;
         cursor: pointer;
+        text-shadow: 0 1px 2px var(--stage-menu-shadow);
         transition:
           background 80ms ease,
           color 80ms ease;
       }
 
       .menu-opt-btn + .menu-opt-btn {
-        border-top: 1px solid rgba(255, 255, 255, 0.07);
+        border-top: 1px solid var(--stage-menu-hairline);
       }
 
       .menu-opt-btn:hover {
-        background: rgba(255, 255, 255, 0.07);
-        color: var(--text);
+        background: var(--stage-menu-row-hover);
       }
 
       .menu-opt-btn:active {
-        background: rgba(255, 255, 255, 0.12);
+        background: var(--stage-menu-row-active);
       }
 
       .menu-opt-btn .opt-icon {
         width: 14px;
         height: 14px;
         flex-shrink: 0;
-        color: var(--text-faint);
+        color: currentColor;
         transition: color 120ms ease;
-      }
-
-      .menu-opt-btn:hover .opt-icon {
-        color: var(--text-dim);
       }
     </style>
   </head>
@@ -587,6 +712,19 @@
         <span class="wordmark">caustics</span>
         <span class="tag">debug</span>
         <span class="tag" id="reduced-motion-tag" hidden title="The OS asks for reduced motion; springs snap and press swell is off">reduced motion</span>
+        <button id="theme-toggle" class="t-icon-swap" data-state="a" aria-label="Switch to light mode" title="Toggle theme">
+          <span class="t-icon" data-icon="a" aria-hidden="true">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M13.5 9.5A6 6 0 0 1 6.5 2.5a6 6 0 1 0 7 7z"/>
+            </svg>
+          </span>
+          <span class="t-icon" data-icon="b" aria-hidden="true">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="8" cy="8" r="3"/>
+              <path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1.06 1.06M11.54 11.54l1.06 1.06M3.4 12.6l1.06-1.06M11.54 4.46l1.06-1.06"/>
+            </svg>
+          </span>
+        </button>
       </header>
 
       <section class="group">
@@ -669,10 +807,10 @@
         <div class="control">
           <span class="control-name">image</span>
           <div class="swatches control-wide" role="radiogroup" aria-label="Backdrop image">
-            <button class="swatch is-active" data-image="stripes" title="stripes" aria-label="stripes"></button>
+            <button class="swatch is-active" data-image="mountains" title="mountains" aria-label="mountains"></button>
+            <button class="swatch" data-image="stripes" title="stripes" aria-label="stripes"></button>
             <button class="swatch" data-image="river" title="mountain river" aria-label="mountain river"></button>
             <button class="swatch" data-image="canyon" title="canyon" aria-label="canyon"></button>
-            <button class="swatch" data-image="mountains" title="mountains" aria-label="mountains"></button>
             <button class="swatch" data-image="pug" title="pug" aria-label="pug"></button>
           </div>
         </div>
@@ -682,27 +820,29 @@
         </div>
       </section>
 
-      <section class="group" id="liquid-menu-section">
-        <h2>Quick Actions</h2>
+    </div>
+
+    <div id="stage">
+      <div class="backdrop background" id="background">
+        <div class="lens" id="lens"></div>
         <div id="liquid-menu-wrapper">
           <div id="liquid-menu" class="menu-lens">
-            <div class="menu-collapsed-content">
+            <button class="menu-trigger" id="liquid-menu-trigger" type="button" aria-label="Quick actions" aria-haspopup="menu" aria-expanded="false">
               <svg class="menu-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M8 2v4l2 2"/>
-                <path d="M3.05 6.36A5.5 5.5 0 1 0 8 2.5"/>
-                <polyline points="1.5 6.5 3.05 6.36 3.2 4.8"/>
+                <path d="M3 4.5h10"/>
+                <path d="M3 8h10"/>
+                <path d="M3 11.5h10"/>
               </svg>
-              <span>Actions</span>
-            </div>
-            <div class="menu-expanded-content">
-              <button class="menu-opt-btn" id="opt-reset">
+            </button>
+            <div class="menu-expanded-content" role="menu" aria-label="Quick actions">
+              <button class="menu-opt-btn" id="opt-reset" role="menuitem">
                 <span>Reset All</span>
                 <svg class="opt-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M2.5 2.5v4h4"/>
                   <path d="M2.84 10a5.5 5.5 0 1 0 .94-5.72L2.5 6.5"/>
                 </svg>
               </button>
-              <button class="menu-opt-btn" id="opt-randomize">
+              <button class="menu-opt-btn" id="opt-randomize" role="menuitem">
                 <span>Randomize</span>
                 <svg class="opt-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M2 4h3.5l5 8H14"/>
@@ -715,13 +855,6 @@
             </div>
           </div>
         </div>
-      </section>
-
-    </div>
-
-    <div id="stage">
-      <div class="backdrop background" id="background">
-        <div class="lens" id="lens"></div>
       </div>
 
       <div id="previews">

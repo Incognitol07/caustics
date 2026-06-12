@@ -76,6 +76,39 @@ function refreshLabels(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Theme: data-theme on <html> drives the palette; the toggle's data-state
+// drives the icon swap (a = moon/dark, b = sun/light). The choice persists
+// across reloads and defaults to the OS preference.
+
+type Theme = "dark" | "light";
+const THEME_KEY = "caustics-debug-theme";
+const themeToggle = document.getElementById("theme-toggle") as HTMLButtonElement;
+
+function applyTheme(theme: Theme): void {
+  document.documentElement.dataset.theme = theme;
+  themeToggle.dataset.state = theme === "dark" ? "a" : "b";
+  themeToggle.setAttribute(
+    "aria-label",
+    theme === "dark" ? "Switch to light mode" : "Switch to dark mode",
+  );
+}
+
+const storedTheme = localStorage.getItem(THEME_KEY);
+applyTheme(
+  storedTheme === "light" || storedTheme === "dark"
+    ? storedTheme
+    : matchMedia("(prefers-color-scheme: light)").matches
+      ? "light"
+      : "dark",
+);
+
+themeToggle.addEventListener("click", () => {
+  const next: Theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  localStorage.setItem(THEME_KEY, next);
+  applyTheme(next);
+});
+
+// ---------------------------------------------------------------------------
 // Presets: each button loads a named option set from the library; the active
 // state is derived from the sliders, so it lights up whenever the current
 // values happen to equal a preset and clears as soon as one is hand-tuned.
@@ -173,8 +206,8 @@ refreshReducedMotionTag();
 // so the shape distorts liquidly en route instead of scaling between two
 // rectangles in lockstep. The radius is near-critically damped because a
 // radius overshoot reads as the corners sharpening, not as bounce.
-const MENU_COLLAPSED = { w: 120, h: 36, r: 18 };
-const MENU_EXPANDED = { w: 200, h: 80, r: 16 };
+const MENU_COLLAPSED = { w: 40, h: 36, r: 18 };
+const MENU_EXPANDED = { w: 172, h: 80, r: 16 };
 const menuW = new Spring(MENU_COLLAPSED.w, 260, 15);
 const menuH = new Spring(MENU_COLLAPSED.h, 170, 12);
 const menuR = new Spring(MENU_COLLAPSED.r, 220, 29);
@@ -187,12 +220,14 @@ const menuApplied = { w: menuW.value, h: menuH.value, r: menuR.value };
 let menuNeedsFinalPass = false;
 
 const menuEl = document.getElementById("liquid-menu") as HTMLElement;
-const menuCollapsedContent = menuEl.querySelector(
-  ".menu-collapsed-content",
-) as HTMLElement;
+const menuTrigger = document.getElementById("liquid-menu-trigger") as HTMLButtonElement;
 const menuExpandedContent = menuEl.querySelector(
   ".menu-expanded-content",
 ) as HTMLElement;
+// The menu lives inside the same backdrop as the draggable orb. Mark it
+// before either lens snapshots the backdrop so each clone can omit the other
+// glass frame instead of recursively refracting a lens inside a lens.
+menuEl.setAttribute("data-caustics-lens", "");
 
 /** Capsule clamp: the pill must not grow corners while the height is small. */
 function menuRadius(): number {
@@ -200,14 +235,14 @@ function menuRadius(): number {
 }
 
 const MENU_OPTIONS = {
-  depth: 10,
-  curvature: 0.3,
-  splay: 0.5,
-  aberration: 0.015,
+  depth: 18,
+  curvature: 0.42,
+  splay: 0.58,
+  aberration: 0,
   blur: 0.4,
-  saturation: 1.15,
+  saturation: 1.18,
   lightAngle: 0,
-  specular: 0.7,
+  specular: 0.9,
 };
 
 /** Lens options at this instant; borderRadius follows the animated spring. */
@@ -326,8 +361,8 @@ function tick(now: number): void {
       1,
     );
     const labelOut = clamp(t / 0.35, 0, 1);
-    menuCollapsedContent.style.opacity = String(1 - labelOut);
-    menuCollapsedContent.style.transform = `scale(${1 - 0.08 * labelOut})`;
+    menuTrigger.style.opacity = String(1 - labelOut);
+    menuTrigger.style.transform = `scale(${1 - 0.08 * labelOut})`;
     const optionsIn = clamp((t - 0.35) / 0.65, 0, 1);
     menuExpandedContent.style.opacity = String(optionsIn);
     menuExpandedContent.style.transform = `translateY(${-6 * (1 - optionsIn)}px)`;
@@ -445,12 +480,12 @@ lensEl.addEventListener("pointerdown", (event) => {
 // refracted copy too, even though the clone is a DOM snapshot.
 
 const BACKDROP_IMAGES: Record<string, string> = {
+  mountains: 'url("https://picsum.photos/id/1018/960/640")',
   stripes:
     "repeating-linear-gradient(45deg, #ff5f6d 0 20px, #ffc371 20px 40px), " +
     "repeating-linear-gradient(-45deg, transparent 0 10px, rgba(0, 0, 0, 0.15) 10px 20px)",
   river: 'url("https://picsum.photos/id/1015/960/640")',
   canyon: 'url("https://picsum.photos/id/1016/960/640")',
-  mountains: 'url("https://picsum.photos/id/1018/960/640")',
   pug: 'url("https://picsum.photos/id/1025/960/640")',
 };
 
@@ -508,14 +543,13 @@ refreshPreviews();
 // ---------------------------------------------------------------------------
 // Menu Init & Interaction
 
-const controlsEl = document.getElementById("controls")!;
 const optReset = document.getElementById("opt-reset")!;
 const optRandomize = document.getElementById("opt-randomize")!;
 
 menuEl.style.width = `${menuW.value}px`;
 menuEl.style.height = `${menuH.value}px`;
 menuEl.style.borderRadius = `${menuRadius()}px`;
-menuLens = createLiquidLens(menuEl, controlsEl, {
+menuLens = createLiquidLens(menuEl, background, {
   ...MENU_OPTIONS,
   borderRadius: menuRadius(),
 });
@@ -551,15 +585,27 @@ function expandMenu(): void {
   if (menuExpanded) return;
   menuExpanded = true;
   menuEl.classList.add("is-expanded");
+  menuTrigger.setAttribute("aria-expanded", "true");
   wake();
 }
 
-function collapseMenu(): void {
+function collapseMenu({ restoreFocus = false } = {}): void {
   if (!menuExpanded) return;
   menuExpanded = false;
   menuEl.classList.remove("is-expanded");
+  menuTrigger.setAttribute("aria-expanded", "false");
+  if (restoreFocus) {
+    menuTrigger.focus();
+  }
   wake();
 }
+
+menuEl.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && menuExpanded) {
+    event.preventDefault();
+    collapseMenu({ restoreFocus: true });
+  }
+});
 
 // Click outside to close
 document.addEventListener("click", (event) => {

@@ -5,11 +5,12 @@ import {
   presets,
   renderDisplacementMapToCanvas,
   renderSpecularToCanvas,
+  Spring,
   type LensPresetName,
   type LiquidLens,
   type LiquidLensOptions,
 } from "caustics";
-import { Spring } from "./spring";
+
 
 // On devices without the CPU headroom for the full pipeline, interactions
 // temporarily drop the passes that dominate filter cost (the per-channel
@@ -60,6 +61,8 @@ const ids = [
   "saturation",
   "lightAngle",
   "specular",
+  "stiffness",
+  "damping",
 ] as const;
 type ControlId = (typeof ids)[number];
 
@@ -90,6 +93,9 @@ function formatValue(id: ControlId, value: number): string {
       return `${Math.round(value)}°`;
     case "saturation":
       return `${value.toFixed(2)}×`;
+    case "stiffness":
+    case "damping":
+      return `${Math.round(value)}`;
     default:
       return value.toFixed(2);
   }
@@ -209,8 +215,8 @@ new ResizeObserver(() => {
 // resolution pass once everything settles.
 
 const target = { x: 0, y: 0 }; // drag offset from center, set by the pointer
-const springX = new Spring(0, 320, 17);
-const springY = new Spring(0, 320, 17);
+const springX = new Spring(0, num("stiffness"), num("damping"));
+const springY = new Spring(0, num("stiffness"), num("damping"));
 const press = new Spring(0, 550, 20);
 
 const geomW = new Spring(num("width"), 170, 16);
@@ -573,6 +579,15 @@ for (const id of ids) {
     refreshLabels();
     if (GEOMETRY_IDS.includes(id)) {
       wake();
+    } else if (id === "stiffness" || id === "damping") {
+      const val = num(id);
+      if (id === "stiffness") {
+        springX.stiffness = val;
+        springY.stiffness = val;
+      } else {
+        springX.damping = val;
+        springY.damping = val;
+      }
     } else {
       lens?.update(currentOptions());
       refreshPreviews();
@@ -676,6 +691,8 @@ const DEFAULT_VALUES = {
   width: 123,
   height: 118,
   borderRadius: 60,
+  stiffness: 320,
+  damping: 17,
   ...presets.full,
 } as const;
 

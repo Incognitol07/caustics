@@ -19,6 +19,10 @@ export class Spring {
   }
 
   step(dt: number): void {
+    if (this.stiffness <= 0) {
+      this.snap();
+      return;
+    }
     const acceleration =
       this.stiffness * (this.target - this.value) - this.damping * this.velocity;
     this.velocity += acceleration * dt;

@@ -94,6 +94,12 @@ function createFilterShell(doc: Document): FilterShell {
   const filter = doc.createElementNS(SVG_NS, "filter");
   filter.setAttribute("id", id);
   filter.setAttribute("color-interpolation-filters", "sRGB");
+  // Expand the filter region to prevent clipping of large blurs and refractions
+  // when the element height/width is small (e.g. during a spring squish/morph).
+  filter.setAttribute("x", "-30%");
+  filter.setAttribute("y", "-50%");
+  filter.setAttribute("width", "160%");
+  filter.setAttribute("height", "200%");
   svg.appendChild(filter);
 
   return {

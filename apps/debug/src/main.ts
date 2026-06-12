@@ -454,17 +454,15 @@ function refreshPreviews(resolution = 1): void {
 
   const field = computeDisplacementField(shape, resolution);
   renderDisplacementMapToCanvas(mapCanvas, field, { scale: Math.max(options.depth, 1) });
-  // Use max-width so CSS media queries can shrink the canvas on small screens;
-  // aspect-ratio preserves the shape when height is auto.
-  mapCanvas.style.maxWidth = `${shape.width}px`;
-  mapCanvas.style.aspectRatio = `${shape.width} / ${shape.height}`;
+  mapCanvas.style.width = `${shape.width}px`;
+  mapCanvas.style.height = `${shape.height}px`;
 
   renderSpecularToCanvas(specularCanvas, shape, {
     lightAngle: options.lightAngle,
     strength: options.specular,
   }, resolution);
-  specularCanvas.style.maxWidth = `${shape.width}px`;
-  specularCanvas.style.aspectRatio = `${shape.width} / ${shape.height}`;
+  specularCanvas.style.width = `${shape.width}px`;
+  specularCanvas.style.height = `${shape.height}px`;
 }
 
 // ---------------------------------------------------------------------------

@@ -584,9 +584,14 @@ menuLens = createLiquidLens(menuEl, background, {
   borderRadius: menuRadius(),
 });
 
-// Press feedback on tap, mirroring the draggable lens: down squishes the
-// glass, release lets it spring back — usually straight into the morph.
-menuEl.addEventListener("pointerdown", () => {
+// Press feedback on tap: squishes the glass when the menu is collapsed
+// (tapping the trigger icon), then springs back into the expand morph.
+// When expanded, option buttons have their own :active feedback, so the
+// whole-card squish is suppressed to avoid the entire frame bouncing.
+menuEl.addEventListener("pointerdown", (event) => {
+  if (menuExpanded && (event.target as HTMLElement).closest(".menu-opt-btn")) {
+    return;
+  }
   menuPress.target = 1;
   wake();
 });

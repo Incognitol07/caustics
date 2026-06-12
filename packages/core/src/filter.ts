@@ -259,14 +259,16 @@ function applyImage(
   canvas: HTMLCanvasElement,
   width: number,
   height: number,
-): void {
+  urlOverride?: string,
+): string {
   // Both href forms are needed: Safari/Firefox honor xlink:href,
   // Chromium honors href.
-  const url = canvas.toDataURL("image/png");
+  const url = urlOverride ?? canvas.toDataURL("image/png");
   image.setAttribute("href", url);
   image.setAttributeNS(XLINK_NS, "href", url);
   image.setAttribute("width", String(width));
   image.setAttribute("height", String(height));
+  return url;
 }
 
 /**
@@ -301,6 +303,8 @@ export function createGlassFilter(doc: Document = document): GlassFilter {
   // synchronous PNG encode/decode of toDataURL + href.
   let mapKey = "";
   let specularKey = "";
+  let mapDataUrl = "";
+  let specularDataUrl = "";
 
   // Scale state lives outside update() so per-frame intensity changes can
   // re-tune displacement magnitude without regenerating the map.
@@ -357,9 +361,8 @@ export function createGlassFilter(doc: Document = document): GlassFilter {
       };
       if (!sameConfig(config, pipeline.config)) {
         pipeline = buildPipeline(doc, shell.filter, config);
-        // The rebuild created fresh feImage elements with no href.
-        mapKey = "";
-        specularKey = "";
+        // Do not clear mapKey and specularKey: their canvas contents are still valid
+        // and we will apply the cached mapDataUrl/specularDataUrl to the new primitives.
       }
 
       // Encode the field so `depth` px spans the full channel range, giving
@@ -382,7 +385,9 @@ export function createGlassFilter(doc: Document = document): GlassFilter {
         mapKey = nextMapKey;
         const field = computeDisplacementField(options, resolution);
         renderDisplacementMapToCanvas(mapCanvas, field, { scale: depth });
-        applyImage(pipeline.mapImage, mapCanvas, options.width, options.height);
+        mapDataUrl = applyImage(pipeline.mapImage, mapCanvas, options.width, options.height);
+      } else if (!pipeline.mapImage.getAttribute("href") && mapDataUrl) {
+        applyImage(pipeline.mapImage, mapCanvas, options.width, options.height, mapDataUrl);
       }
 
       if (pipeline.specularImage) {
@@ -396,7 +401,9 @@ export function createGlassFilter(doc: Document = document): GlassFilter {
             { lightAngle: options.lightAngle, strength: options.specular },
             resolution,
           );
-          applyImage(pipeline.specularImage, specularCanvas, options.width, options.height);
+          specularDataUrl = applyImage(pipeline.specularImage, specularCanvas, options.width, options.height);
+        } else if (!pipeline.specularImage.getAttribute("href") && specularDataUrl) {
+          applyImage(pipeline.specularImage, specularCanvas, options.width, options.height, specularDataUrl);
         }
       }
 

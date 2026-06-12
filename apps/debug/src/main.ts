@@ -1,6 +1,7 @@
 import {
   computeDisplacementField,
   createLiquidLens,
+  performanceTier,
   presets,
   renderDisplacementMapToCanvas,
   renderSpecularToCanvas,
@@ -9,6 +10,11 @@ import {
   type LiquidLensOptions,
 } from "caustics";
 import { Spring } from "./spring";
+
+// On devices without the CPU headroom for the full pipeline, interactions
+// temporarily drop the passes that dominate filter cost (the per-channel
+// aberration split and the Gaussian blur) and restore them on settle.
+const lowTier = performanceTier() === "low";
 
 // ---------------------------------------------------------------------------
 // Mobile panel toggle
@@ -362,7 +368,10 @@ function tick(now: number): void {
     lensEl.style.width = `${geomW.value}px`;
     lensEl.style.height = `${geomH.value}px`;
     lensEl.style.borderRadius = `${geomR.value}px`;
-    lens?.update(currentOptions(), 0.5);
+    lens?.update(
+      { ...currentOptions(), ...(lowTier ? { aberration: 0, blur: 0 } : null) },
+      0.5,
+    );
     refreshPreviews(0.5);
     needsFinalPass = true;
   }
@@ -380,7 +389,10 @@ function tick(now: number): void {
     menuEl.style.width = `${menuW.value}px`;
     menuEl.style.height = `${menuH.value}px`;
     menuEl.style.borderRadius = `${menuRadius()}px`;
-    menuLens?.update({ borderRadius: menuRadius() }, 0.5);
+    menuLens?.update(
+      { borderRadius: menuRadius(), ...(lowTier ? { blur: 0 } : null) },
+      0.5,
+    );
     menuNeedsFinalPass = true;
 
     // Content rides the morph instead of cross-fading on its own clock:
@@ -425,7 +437,7 @@ function tick(now: number): void {
     }
     if (menuNeedsFinalPass) {
       menuNeedsFinalPass = false;
-      menuLens?.update({ borderRadius: menuRadius() });
+      menuLens?.update({ borderRadius: menuRadius(), blur: MENU_OPTIONS.blur });
     }
     rafId = undefined;
   }
@@ -441,6 +453,8 @@ function wake(): void {
 
 // ---------------------------------------------------------------------------
 // Map previews
+
+const mobileLayout = matchMedia("(max-width: 768px)");
 
 function refreshPreviews(resolution = 1): void {
   const options = currentOptions();
@@ -475,6 +489,13 @@ lensEl.addEventListener("pointerdown", (event) => {
   lensEl.style.cursor = "grabbing";
   dragging = true;
   press.target = 1;
+  if (lowTier) {
+    // Every frame of the drag re-rasters the whole filter, so shed the
+    // expensive passes for its duration; aberration is invisible on a
+    // moving lens anyway. The settle pass restores the sliders' look.
+    lens?.update({ aberration: 0, blur: 0 });
+    needsFinalPass = true;
+  }
   wake();
 
   const grabX = event.clientX - target.x;

@@ -11,3 +11,5 @@ export type { LiquidLens, LiquidLensOptions } from "./lens";
 export { createLiquidLens } from "./lens";
 export type { LensPreset, LensPresetName } from "./presets";
 export { presets } from "./presets";
+export type { PerformanceTier } from "./tier";
+export { performanceTier } from "./tier";

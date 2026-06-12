@@ -139,6 +139,10 @@ Presets:
 - `lean`: still glassy, cheaper to run
 - `minimal`: the simplest effect that still bends
 
+If you don't pick one, the lens picks for you: `full` on machines with
+headroom, `lean` on phones and low-power laptops. Pass a preset (or any
+option) to overrule it.
+
 ## Press, Morph, Animate
 
 Use `setIntensity()` for touch feedback:

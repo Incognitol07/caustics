@@ -280,6 +280,10 @@ function applyImage(
  */
 export function createGlassFilter(doc: Document = document): GlassFilter {
   const shell = createFilterShell(doc);
+  // Only WebKit needs the id-cycling repaint workaround; everywhere else a
+  // stable id lets the engine keep its cached filter reference instead of
+  // re-resolving it on every update.
+  const isWebKit = /apple/i.test(doc.defaultView?.navigator?.vendor ?? "");
   let pipeline = buildPipeline(doc, shell.filter, {
     split: true,
     blur: true,
@@ -290,6 +294,13 @@ export function createGlassFilter(doc: Document = document): GlassFilter {
 
   const mapCanvas = doc.createElement("canvas");
   const specularCanvas = doc.createElement("canvas");
+
+  // Fingerprints of the inputs behind each generated image, so updates that
+  // do not change them (a saturation tweak, a depth change handled by the
+  // displacement scale) skip the field computation and, above all, the
+  // synchronous PNG encode/decode of toDataURL + href.
+  let mapKey = "";
+  let specularKey = "";
 
   // Scale state lives outside update() so per-frame intensity changes can
   // re-tune displacement magnitude without regenerating the map.
@@ -318,7 +329,9 @@ export function createGlassFilter(doc: Document = document): GlassFilter {
       // Cycle the filter id so WebKit notices the change; it does not
       // reliably repaint when an already-referenced filter's primitives
       // are mutated in place.
-      shell.cycle();
+      if (isWebKit) {
+        shell.cycle();
+      }
 
       const config: PipelineConfig = {
         split: options.aberration > ABERRATION_EPSILON,
@@ -328,6 +341,9 @@ export function createGlassFilter(doc: Document = document): GlassFilter {
       };
       if (!sameConfig(config, pipeline.config)) {
         pipeline = buildPipeline(doc, shell.filter, config);
+        // The rebuild created fresh feImage elements with no href.
+        mapKey = "";
+        specularKey = "";
       }
 
       // Encode the field so `depth` px spans the full channel range, giving
@@ -338,18 +354,34 @@ export function createGlassFilter(doc: Document = document): GlassFilter {
       const resolution =
         resolutionOverride ?? Math.min(doc.defaultView?.devicePixelRatio ?? 1, 2);
 
-      const field = computeDisplacementField(options, resolution);
-      renderDisplacementMapToCanvas(mapCanvas, field, { scale: depth });
-      applyImage(pipeline.mapImage, mapCanvas, options.width, options.height);
+      const geometry =
+        `${options.width}|${options.height}|${options.borderRadius}|` +
+        `${options.curvature}|${resolution}`;
+
+      // The encoding divides the field by this same depth, so for depth >= 1
+      // the pixels are depth-independent (magnitude lives entirely in the
+      // displacement scale); only sub-pixel depths change the image.
+      const nextMapKey = `${geometry}|${options.splay}|${Math.min(options.depth, 1)}`;
+      if (nextMapKey !== mapKey) {
+        mapKey = nextMapKey;
+        const field = computeDisplacementField(options, resolution);
+        renderDisplacementMapToCanvas(mapCanvas, field, { scale: depth });
+        applyImage(pipeline.mapImage, mapCanvas, options.width, options.height);
+      }
 
       if (pipeline.specularImage) {
-        renderSpecularToCanvas(
-          specularCanvas,
-          options,
-          { lightAngle: options.lightAngle, strength: options.specular },
-          resolution,
-        );
-        applyImage(pipeline.specularImage, specularCanvas, options.width, options.height);
+        const nextSpecularKey =
+          `${geometry}|${options.lightAngle}|${options.specular}`;
+        if (nextSpecularKey !== specularKey) {
+          specularKey = nextSpecularKey;
+          renderSpecularToCanvas(
+            specularCanvas,
+            options,
+            { lightAngle: options.lightAngle, strength: options.specular },
+            resolution,
+          );
+          applyImage(pipeline.specularImage, specularCanvas, options.width, options.height);
+        }
       }
 
       // feDisplacementMap shifts by scale * (channel - 0.5), so scale =

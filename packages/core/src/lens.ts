@@ -1,5 +1,6 @@
 import { createGlassFilter } from "./filter";
 import { presets } from "./presets";
+import { performanceTier } from "./tier";
 
 const LENS_MARKER = "data-caustics-lens";
 
@@ -105,12 +106,22 @@ export interface LiquidLens {
   destroy(): void;
 }
 
-const DEFAULTS: Required<Omit<LiquidLensOptions, "borderRadius" | "onReady">> = {
-  ...presets.full,
-  respectReducedMotion: true,
-  trackScroll: true,
-  trackContent: true,
-};
+type ResolvedOptions = Required<Omit<LiquidLensOptions, "borderRadius" | "onReady">>;
+
+/**
+ * Defaults adapt to the device: the full preset where there is CPU headroom
+ * for it, the lean preset on devices that rasterize the filter pipeline too
+ * slowly for the full look (see `performanceTier`). Explicit options always
+ * win, so callers who want one look everywhere pass a preset themselves.
+ */
+function defaultsFor(win: (Window & typeof globalThis) | null): ResolvedOptions {
+  return {
+    ...presets[performanceTier(win) === "low" ? "lean" : "full"],
+    respectReducedMotion: true,
+    trackScroll: true,
+    trackContent: true,
+  };
+}
 
 function assertElement(value: unknown, name: string): asserts value is HTMLElement {
   if (!value || (value as Node).nodeType !== 1) {
@@ -233,7 +244,10 @@ export function createLiquidLens(
   warnOnSuspectOptions(options);
 
   const doc = frame.ownerDocument;
-  let settings: LiquidLensOptions & typeof DEFAULTS = { ...DEFAULTS, ...options };
+  let settings: LiquidLensOptions & ResolvedOptions = {
+    ...defaultsFor(doc.defaultView),
+    ...options,
+  };
 
   // Mark the frame so clones of the backdrop can exclude it (the frame is
   // usually a descendant of the backdrop; cloning it back into itself
@@ -508,12 +522,20 @@ export function createLiquidLens(
       glassFilter.setIntensity(1);
     }
 
+    // All layout reads happen before any style writes, so the whole update
+    // costs at most one synchronous reflow instead of one per interleaved
+    // read; this runs on every frame of a size morph.
     const borderRadius =
       settings.borderRadius ??
       (Number.parseFloat(getComputedStyle(frame).borderTopLeftRadius) || 0);
 
     lastWidth = frame.clientWidth;
     lastHeight = frame.clientHeight;
+    const backdropWidth = backdrop.clientWidth;
+    const backdropHeight = backdrop.clientHeight;
+    const frameRect = frame.getBoundingClientRect();
+    const backdropRect = backdrop.getBoundingClientRect();
+    mirrorScroll(backdrop);
 
     glassFilter.update(
       {
@@ -535,11 +557,11 @@ export function createLiquidLens(
     // reference must be re-applied.
     refraction.style.filter = glassFilter.cssFilter;
 
-    clone.style.width = `${backdrop.clientWidth}px`;
-    clone.style.height = `${backdrop.clientHeight}px`;
+    clone.style.width = `${backdropWidth}px`;
+    clone.style.height = `${backdropHeight}px`;
     setScrollTracking(settings.trackScroll);
     setContentTracking(settings.trackContent);
-    sync();
+    syncTo(frameRect.left - backdropRect.left, frameRect.top - backdropRect.top);
   }
 
   // Map geometry depends on the frame's size; regenerate when it changes,
